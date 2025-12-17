@@ -1,0 +1,8 @@
+{
+  "name": "Family Plan",
+  "description": "A fully responsive Family Plan calendar application featuring Month, Week, Day, and Agenda views with local event management and AI capabilities.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
