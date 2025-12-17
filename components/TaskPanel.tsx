@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Check, Trash2, Plus, MoreHorizontal, Star, Calendar, Eye, EyeOff, ListX } from 'lucide-react';
-import { CalendarEvent } from '../types';
+import { CalendarEvent, CalendarConfig } from '../types';
 import { format, isToday, isTomorrow, isPast, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -8,34 +8,55 @@ interface TaskPanelProps {
   isOpen: boolean;
   onClose: () => void;
   tasks: CalendarEvent[];
+  calendars: CalendarConfig[];
   onToggleTask: (task: CalendarEvent) => void;
   onDeleteTask: (taskId: string) => void;
-  onAddTask: (title: string) => void;
+  onAddTask: (title: string, calendarId?: string) => void;
   onToggleImportance?: (task: CalendarEvent) => void;
   onEditTask: (task: CalendarEvent) => void;
+  onChangeCalendar?: (taskId: string, calendarId: string) => void;
 }
 
 const TaskPanel: React.FC<TaskPanelProps> = ({ 
   isOpen, 
   onClose, 
   tasks, 
+  calendars,
   onToggleTask, 
   onDeleteTask,
   onAddTask,
   onToggleImportance,
-  onEditTask
+  onEditTask,
+  onChangeCalendar
 }) => {
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showCompleted, setShowCompleted] = useState(true);
   
+  // Creation Calendar Selector State
+  const [selectedCreateCalendarId, setSelectedCreateCalendarId] = useState<string>('');
+  const [isCreateCalSelectorOpen, setIsCreateCalSelectorOpen] = useState(false);
+
+  // List Item Calendar Selector State
+  const [openSelectorTaskId, setOpenSelectorTaskId] = useState<string | null>(null);
+
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const createCalSelectorRef = useRef<HTMLDivElement>(null);
+  const listCalSelectorRef = useRef<HTMLDivElement>(null);
+
+  // Initialize selected calendar to "Tareas" or first available
+  useEffect(() => {
+    if (!selectedCreateCalendarId && calendars.length > 0) {
+        const defaultCal = calendars.find(c => c.label === 'Tareas') || calendars[0];
+        setSelectedCreateCalendarId(defaultCal.id);
+    }
+  }, [calendars, selectedCreateCalendarId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
-    onAddTask(newTaskTitle);
+    onAddTask(newTaskTitle, selectedCreateCalendarId);
     setNewTaskTitle('');
     setTimeout(() => inputRef.current?.focus(), 0);
   };
@@ -46,11 +67,20 @@ const TaskPanel: React.FC<TaskPanelProps> = ({
     }
   }, [isOpen]);
 
-  // Close menu when clicking outside
+  // Close menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (menuRef.current && !menuRef.current.contains(target)) {
         setIsMenuOpen(false);
+      }
+      if (createCalSelectorRef.current && !createCalSelectorRef.current.contains(target)) {
+        setIsCreateCalSelectorOpen(false);
+      }
+      if (listCalSelectorRef.current && !listCalSelectorRef.current.contains(target)) {
+          // Only close if we clicked outside the current active selector
+          // Note: This simple check closes it if we click anywhere else, which is fine
+          setOpenSelectorTaskId(null);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -84,13 +114,14 @@ const TaskPanel: React.FC<TaskPanelProps> = ({
       }
   };
 
+  const getCalendarColor = (id: string) => calendars.find(c => c.id === id)?.color || '#999';
+
   if (!isOpen) return null;
 
   return (
     <div className="flex flex-col h-full w-full bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 shadow-2xl relative">
       
       {/* Header Styled like iOS Reminders List Header */}
-      {/* Changed z-10 to z-20 to ensure menu appears above input */}
       <div className="pt-12 pb-2 px-6 flex justify-between items-start shrink-0 bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl z-20">
          <div>
             <h2 className="text-3xl font-bold text-blue-600 dark:text-blue-500 tracking-tight">Tareas</h2>
@@ -141,27 +172,64 @@ const TaskPanel: React.FC<TaskPanelProps> = ({
                 ref={inputRef}
                 type="text" 
                 placeholder="Añadir nueva tarea..." 
-                className="w-full bg-gray-100 dark:bg-gray-800 border-none rounded-xl py-3 pl-11 pr-4 text-base font-medium text-gray-900 dark:text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500/50 transition-all outline-none"
+                className="w-full bg-gray-100 dark:bg-gray-800 border-none rounded-xl py-3 pl-11 pr-14 text-base font-medium text-gray-900 dark:text-white placeholder-gray-500 focus:ring-2 focus:ring-blue-500/50 transition-all outline-none"
                 value={newTaskTitle}
                 onChange={(e) => setNewTaskTitle(e.target.value)}
             />
-            {newTaskTitle && (
-                <button 
-                    type="submit" 
-                    className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors animate-scale-in"
-                >
-                    Añadir
-                </button>
-            )}
+            
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {/* Create Calendar Selector */}
+                <div className="relative" ref={createCalSelectorRef}>
+                    <button
+                        type="button"
+                        onClick={() => setIsCreateCalSelectorOpen(!isCreateCalSelectorOpen)}
+                        className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                        title="Seleccionar calendario"
+                    >
+                        <div 
+                            className="w-2.5 h-2.5 rounded-full"
+                            style={{ backgroundColor: getCalendarColor(selectedCreateCalendarId) }}
+                        ></div>
+                    </button>
+                    {isCreateCalSelectorOpen && (
+                         <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 overflow-hidden z-50 max-h-64 overflow-y-auto">
+                            {calendars.filter(c => c.visible).map(cal => (
+                                <button
+                                    key={cal.id}
+                                    type="button"
+                                    onClick={() => { setSelectedCreateCalendarId(cal.id); setIsCreateCalSelectorOpen(false); }}
+                                    className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                                >
+                                    <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: cal.color }}></div>
+                                    <span className="truncate">{cal.label}</span>
+                                    {selectedCreateCalendarId === cal.id && <Check size={14} className="ml-auto text-blue-500"/>}
+                                </button>
+                            ))}
+                         </div>
+                    )}
+                </div>
+
+                {newTaskTitle && (
+                    <button 
+                        type="submit" 
+                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors animate-scale-in"
+                    >
+                        Añadir
+                    </button>
+                )}
+            </div>
         </form>
       </div>
 
       <div className="w-full h-px bg-gray-100 dark:bg-gray-800 mt-2"></div>
 
       {/* Task List */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar px-6 pb-12 pt-4">
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-6 pb-12 pt-4" ref={listCalSelectorRef}>
          <div className="space-y-4">
-             {pendingTasks.map(task => (
+             {pendingTasks.map(task => {
+                 const cal = calendars.find(c => c.id === task.calendarId);
+                 
+                 return (
                  <div 
                     key={task.id} 
                     onClick={() => onEditTask(task)}
@@ -185,22 +253,70 @@ const TaskPanel: React.FC<TaskPanelProps> = ({
                             <span className={`text-xs ${isPast(new Date(task.start)) && !isSameDay(new Date(task.start), new Date()) ? 'text-red-500 font-medium' : 'text-gray-500 dark:text-gray-400'}`}>
                                 {formatTaskDate(task.start)}
                             </span>
+                            
+                            {/* Calendar Name Badge */}
+                            {cal && (
+                                <span 
+                                    className="text-[10px] font-bold px-2 py-0.5 rounded-[6px] tracking-wide"
+                                    style={{ 
+                                        backgroundColor: `${cal.color}15`, // Subtle tint background
+                                        color: cal.color 
+                                    }}
+                                >
+                                    {cal.label}
+                                </span>
+                            )}
+
                             {task.description && <span className="text-xs text-gray-400 dark:text-gray-600 truncate max-w-[150px]">• {task.description}</span>}
                          </div>
                      </div>
 
-                     <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
-                        {onToggleImportance && (
-                             <button onClick={(e) => { e.stopPropagation(); onToggleImportance(task); }} className={`p-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 ${task.isImportant ? 'text-yellow-500' : 'text-gray-400'}`}>
-                                 <Star size={16} fill={task.isImportant ? "currentColor" : "none"} />
-                             </button>
+                     <div className="flex items-center gap-1">
+                        {/* List Item Calendar Selector */}
+                        {onChangeCalendar && (
+                            <div className="relative">
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setOpenSelectorTaskId(openSelectorTaskId === task.id ? null : task.id); }}
+                                    className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors opacity-0 group-hover:opacity-100"
+                                    title="Cambiar calendario"
+                                >
+                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: task.color }}></div>
+                                </button>
+                                {openSelectorTaskId === task.id && (
+                                    <div className="absolute right-0 top-full mt-1 w-40 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-100 dark:border-gray-700 overflow-hidden z-[60] max-h-48 overflow-y-auto">
+                                        {calendars.filter(c => c.visible).map(calItem => (
+                                            <button
+                                                key={calItem.id}
+                                                onClick={(e) => { 
+                                                    e.stopPropagation(); 
+                                                    onChangeCalendar(task.id, calItem.id); 
+                                                    setOpenSelectorTaskId(null); 
+                                                }}
+                                                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
+                                            >
+                                                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: calItem.color }}></div>
+                                                <span className="truncate">{calItem.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         )}
-                        <button onClick={(e) => { e.stopPropagation(); onDeleteTask(task.id); }} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md">
-                            <Trash2 size={16} />
-                        </button>
+
+                        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
+                            {onToggleImportance && (
+                                <button onClick={(e) => { e.stopPropagation(); onToggleImportance(task); }} className={`p-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 ${task.isImportant ? 'text-yellow-500' : 'text-gray-400'}`}>
+                                    <Star size={16} fill={task.isImportant ? "currentColor" : "none"} />
+                                </button>
+                            )}
+                            <button onClick={(e) => { e.stopPropagation(); onDeleteTask(task.id); }} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md">
+                                <Trash2 size={16} />
+                            </button>
+                        </div>
                      </div>
                  </div>
-             ))}
+                 );
+             })}
 
              {pendingTasks.length === 0 && completedTasks.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-10 text-center opacity-60">

@@ -52,7 +52,7 @@ const playSuccessSound = () => {
 
 const triggerConfetti = () => {
   const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
-  const particleCount = 40;
+  const particleCount = 30; // Reduced count for performance
   
   for (let i = 0; i < particleCount; i++) {
     const particle = document.createElement('div');
@@ -196,14 +196,12 @@ const App: React.FC = () => {
 
     // PWA Service Worker Registration with Update Handling
     if ('serviceWorker' in navigator) {
-      // Use root-relative path.
       const swUrl = '/service-worker.js';
 
       navigator.serviceWorker.register(swUrl)
         .then((registration) => {
           setSwRegistration(registration);
 
-          // Check if there is already a worker waiting
           if (registration.waiting) {
             setIsUpdateAvailable(true);
           }
@@ -221,7 +219,7 @@ const App: React.FC = () => {
         })
         .catch(error => {
           if (error.message && (error.message.includes('origin') || error.message.includes('scriptURL'))) {
-             console.warn('Service Worker registration skipped: Environment origin mismatch (expected in previews).');
+             console.warn('SW Skipped (Preview Mode)');
           } else {
              console.error('SW Registration failed:', error);
           }
@@ -271,7 +269,6 @@ const App: React.FC = () => {
         const hasStandardCalendars = loadedCalendars.some(c => requiredIds.includes(c.id));
         
         if (!hasStandardCalendars && loadedCalendars.length > 0) {
-            console.log("Migrating calendars to new defaults (UUID)...");
             const resetCals = await dataService.resetCalendars();
             loadedCalendars = resetCals;
             loadedEvents = await dataService.getEvents();
@@ -399,10 +396,12 @@ const App: React.FC = () => {
     return calendars.filter(c => c.visible).map(c => c.id);
   }, [calendars]);
 
+  // OPTIMIZED: Limit view range expansion to avoid huge calculations on every render
   const displayedEvents = useMemo(() => {
     const activeEvents = events.filter(e => !e.deletedAt);
 
     if (isSearching) {
+       // Search mode usually needs a wider range, but limit to +/- 1 year
        const searchStart = addYears(new Date(), -1);
        const searchEnd = addYears(new Date(), 1);
        const allInstances = generateRecurringEvents(activeEvents, searchStart, searchEnd);
@@ -429,12 +428,23 @@ const App: React.FC = () => {
        });
 
     } else {
-       const expandStart = addMonths(currentDate, -2);
-       const expandEnd = addMonths(currentDate, 6);
+       // STANDARD VIEW: Minimize expansion range based on view type
+       // This drastically reduces CPU load on recurrence calculation
+       let expandStart = addMonths(currentDate, -1);
+       let expandEnd = addMonths(currentDate, 1);
+       
+       if (view === 'month') {
+           expandStart = addMonths(currentDate, -1);
+           expandEnd = addMonths(currentDate, 2);
+       } else {
+           expandStart = addWeeks(currentDate, -2);
+           expandEnd = addWeeks(currentDate, 2);
+       }
+
        const expanded = generateRecurringEvents(activeEvents, expandStart, expandEnd);
        return expanded.filter(ev => visibleCalendarIds.includes(ev.calendarId));
     }
-  }, [events, currentDate, visibleCalendarIds, isSearching, searchCriteria]);
+  }, [events, currentDate, visibleCalendarIds, isSearching, searchCriteria, view]);
 
   const allTasks = useMemo(() => {
       return events.filter(e => e.isTask && !e.deletedAt);
@@ -447,14 +457,7 @@ const App: React.FC = () => {
     }
 
     if (Notification.permission === 'denied') {
-      alert(
-        "🚫 Las notificaciones están bloqueadas.\n\n" +
-        "Para recibir recordatorios de tus eventos, necesitas habilitarlas manualmente:\n\n" +
-        "1. Haz clic en el icono de candado 🔒 en la barra de direcciones del navegador.\n" +
-        "2. Busca la opción 'Notificaciones' o 'Permisos'.\n" +
-        "3. Cambia el interruptor a 'Permitir'.\n" +
-        "4. Recarga la página."
-      );
+      alert("🚫 Las notificaciones están bloqueadas.");
       return;
     }
 
@@ -495,7 +498,6 @@ const App: React.FC = () => {
         });
 
     } catch (error) {
-      console.error("Google Sync Failed", error);
       if (!skipSignIn) alert("No se pudo conectar con Google Calendar.");
       setIsGoogleConnected(false);
       dataService.saveSettings({ metadata: { isGoogleConnected: false } });
@@ -512,10 +514,13 @@ const App: React.FC = () => {
       setEvents(prev => prev.filter(e => !e.isRemote));
   };
 
+  // NOTIFICATION CHECKER - OPTIMIZED INTERVAL
   useEffect(() => {
+    // Increased interval to 60s to reduce background CPU usage
     const checkInterval = setInterval(() => {
       if (typeof window === 'undefined' || !('Notification' in window) || Notification.permission !== 'granted') return;
       const now = new Date();
+      // Only check next 24h for notifications, no need to expand year
       const checkEnd = addDays(now, 1);
       const activeEvents = events.filter(e => !e.deletedAt && !e.isCompleted);
       const upcomingInstances = generateRecurringEvents(activeEvents, now, checkEnd);
@@ -526,16 +531,16 @@ const App: React.FC = () => {
         reminders.forEach(reminderTime => {
             if (reminderTime === 0 && !isSameDay(event.start, now)) return; 
             const minutesUntilStart = differenceInMinutes(event.start, now);
-            const notificationKey = `${event.id}_${reminderTime}`;
+            const notificationKey = `${event.id}_${reminderTime}_${format(event.start, 'yyyyMMddHHmm')}`; // Unique key per instance time
             
-            const isTime = minutesUntilStart <= reminderTime && minutesUntilStart >= (reminderTime - 1);
+            // Check window: between reminderTime and reminderTime-1 minute
+            const isTime = minutesUntilStart <= reminderTime && minutesUntilStart >= (reminderTime - 1.5);
 
             if (isTime && !notifiedEventIds.has(notificationKey)) {
               try {
                 const notification = new Notification(event.title, {
                   body: `Comienza en ${Math.max(0, minutesUntilStart)} minutos (${format(event.start, 'h:mm a', { locale: es })})`,
                   icon: 'https://cdn-icons-png.flaticon.com/512/8943/8943377.png',
-                  requireInteraction: true, 
                   tag: notificationKey 
                 });
                 
@@ -546,16 +551,11 @@ const App: React.FC = () => {
                     notification.close();
                 };
                 
-                const newSet = new Set<string>(notifiedEventIds);
-                newSet.add(notificationKey);
-                setNotifiedEventIds(newSet);
-                
-                // @ts-ignore
-                dataService.saveSettings({ 
-                    metadata: { 
-                        notifiedEventIds: Array.from(newSet),
-                        isGoogleConnected 
-                    } 
+                setNotifiedEventIds(prev => {
+                    const newSet = new Set(prev);
+                    newSet.add(notificationKey);
+                    // Cleanup old keys periodically could be added here
+                    return newSet;
                 });
               } catch (e) {
                 console.error("Notification failed", e);
@@ -563,10 +563,10 @@ const App: React.FC = () => {
             }
         });
       });
-    }, 10000);
+    }, 60000); // Check every minute instead of 10s
 
     return () => clearInterval(checkInterval);
-  }, [events, notifiedEventIds, isGoogleConnected]);
+  }, [events, notifiedEventIds]);
 
   const handleToggleCalendar = (id: string) => {
     setCalendars(prev => prev.map(c => c.id === id ? { ...c, visible: !c.visible } : c));
@@ -664,7 +664,6 @@ const App: React.FC = () => {
   };
   
   const handleToggleTaskCompletion = async (event: CalendarEvent) => {
-      // Clean ID from potential recurrence suffix (e.g., uuid_timestamp)
       const originalId = event.id.includes('_') ? event.id.split('_')[0] : event.id;
       
       const masterEvent = events.find(e => e.id === originalId);
@@ -681,9 +680,7 @@ const App: React.FC = () => {
   };
 
   const handleToggleTaskImportance = async (event: CalendarEvent) => {
-      // Clean ID from potential recurrence suffix
       const originalId = event.id.includes('_') ? event.id.split('_')[0] : event.id;
-      
       const masterEvent = events.find(e => e.id === originalId);
       if (!masterEvent) return;
 
@@ -691,18 +688,33 @@ const App: React.FC = () => {
       setEvents(prev => prev.map(e => e.id === originalId ? updatedEvent : e));
       await dataService.createOrUpdateEvent(updatedEvent);
   };
+
+  const handleChangeTaskCalendar = async (taskId: string, calendarId: string) => {
+     const originalId = taskId.includes('_') ? taskId.split('_')[0] : taskId;
+     const masterEvent = events.find(e => e.id === originalId);
+     const targetCalendar = calendars.find(c => c.id === calendarId);
+     
+     if (!masterEvent || !targetCalendar) return;
+
+     const updatedEvent = { ...masterEvent, calendarId: calendarId, color: targetCalendar.color };
+     setEvents(prev => prev.map(e => e.id === originalId ? updatedEvent : e));
+     await dataService.createOrUpdateEvent(updatedEvent);
+  };
   
-  const handleQuickAddTask = async (title: string) => {
+  const handleQuickAddTask = async (title: string, calendarId?: string) => {
       const now = new Date();
-      const taskCal = calendars.find(c => c.label === 'Tareas');
+      // Default to "Tareas" or the first calendar if no ID provided
+      const targetCalId = calendarId || calendars.find(c => c.label === 'Tareas')?.id || calendars[0]?.id || 'default';
+      const targetCal = calendars.find(c => c.id === targetCalId);
+
       const newTask: CalendarEvent = {
         id: generateUUID(),
         title: title,
         start: now,
         end: new Date(now.getTime() + 30 * 60000), 
-        color: taskCal?.color || '#3F51B5',
+        color: targetCal?.color || '#3F51B5',
         recurrence: 'none',
-        calendarId: taskCal?.id || calendars[0]?.id || 'default',
+        calendarId: targetCalId,
         isTask: true,
         isCompleted: false,
         isImportant: false
@@ -819,7 +831,6 @@ const App: React.FC = () => {
           }
       } catch (e) {
           console.error("Error procesando evento de IA:", e);
-          alert("Hubo un error al procesar el evento sugerido por la IA.");
       }
   };
 
@@ -926,9 +937,9 @@ const App: React.FC = () => {
       <Header 
         currentDate={currentDate}
         view={view}
-        events={displayedEvents} // Pass events here
+        events={displayedEvents}
         onViewChange={handleViewChange}
-        onDateSelect={(d) => setCurrentDate(d)} // Pass date selector here
+        onDateSelect={(d) => setCurrentDate(d)}
         onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)}
         onPrev={handlePrev}
         onNext={handleNext}
@@ -1103,10 +1114,12 @@ const App: React.FC = () => {
                   isOpen={isTaskPanelOpen}
                   onClose={() => setIsTaskPanelOpen(false)}
                   tasks={allTasks}
+                  calendars={calendars}
                   onToggleTask={handleToggleTaskCompletion}
                   onDeleteTask={(id) => deleteEvent(id, 'all')}
                   onAddTask={handleQuickAddTask}
                   onToggleImportance={handleToggleTaskImportance}
+                  onChangeCalendar={handleChangeTaskCalendar}
                   onEditTask={handleEventClick}
                />
            </div>

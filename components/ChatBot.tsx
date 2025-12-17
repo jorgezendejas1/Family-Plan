@@ -37,27 +37,42 @@ interface Message {
 const Typewriter: React.FC<{ text: string; speed?: number; onComplete?: () => void }> = ({ text, speed = 10, onComplete }) => {
   const [displayedText, setDisplayedText] = useState('');
   const [isComplete, setIsComplete] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   useEffect(() => {
     setDisplayedText(''); 
     setIsComplete(false);
+    
+    // Clear any existing interval
+    if (intervalRef.current) clearInterval(intervalRef.current);
+
     let i = 0;
     
+    // Safety check: if text is huge, just show it all to avoid lag
+    if (text.length > 500) {
+        setDisplayedText(text);
+        setIsComplete(true);
+        if (onComplete) onComplete();
+        return;
+    }
+
     const startDelay = setTimeout(() => {
-        const timer = setInterval(() => {
+        intervalRef.current = setInterval(() => {
           if (i < text.length) {
             setDisplayedText(text.slice(0, i + 1));
             i++;
           } else {
-            clearInterval(timer);
+            if (intervalRef.current) clearInterval(intervalRef.current);
             setIsComplete(true);
             if (onComplete) onComplete();
           }
         }, speed);
-        return () => clearInterval(timer);
     }, 300);
 
-    return () => clearTimeout(startDelay);
+    return () => {
+        clearTimeout(startDelay);
+        if (intervalRef.current) clearInterval(intervalRef.current);
+    };
   }, [text, speed, onComplete]);
 
   return (
@@ -147,8 +162,10 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
     try {
       const currentDate = new Date();
       const currentDateIso = currentDate.toISOString();
+      
+      // OPTIMIZATION: Reduce context window to 30 days instead of 45 to save tokens/memory
       const contextStart = subDays(currentDate, 1);
-      const contextEnd = addDays(currentDate, 45);
+      const contextEnd = addDays(currentDate, 30);
       
       const relevantEvents = events.filter(e => {
           if (!e.start) return false;
@@ -200,7 +217,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
 
       const apiHistory = messages
         .filter(m => (m.role === 'user' || m.role === 'model') && !m.eventDraft && m.id !== userMessage.id)
-        .slice(-10) 
+        .slice(-8) // Reduced history window for lighter payload
         .map(m => ({ role: m.role, parts: [{ text: m.text || '' }] }));
 
       const currentContentParts: any[] = [];
@@ -310,7 +327,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
       await appendMessage({
         id: Date.now().toString(),
         role: 'system',
-        text: '❌ Error de conexión.'
+        text: '❌ Error de conexión. Intenta de nuevo.'
       });
     } finally {
       setIsLoading(false);

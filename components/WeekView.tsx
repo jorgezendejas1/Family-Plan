@@ -1,11 +1,21 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { format, addDays, isSameDay, differenceInMinutes, isSameWeek } from 'date-fns';
 import startOfWeek from 'date-fns/startOfWeek';
 import startOfDay from 'date-fns/startOfDay';
 import { es } from 'date-fns/locale';
-import { ViewProps } from '../types';
+import { ViewProps, CalendarEvent } from '../types';
 import { TIME_ZONES } from '../constants';
 import { Check, Cake } from 'lucide-react';
+
+interface PositionedEvent extends CalendarEvent {
+    style: {
+        top: string;
+        height: string;
+        left: string;
+        width: string;
+        zIndex: number;
+    }
+}
 
 const WeekView: React.FC<ViewProps> = ({ currentDate, events, calendars, onEventClick, onTimeSlotClick, timeZoneConfig, onToggleTaskCompletion }) => {
   const startOfCurrentWeek = startOfWeek(currentDate, { locale: es });
@@ -35,6 +45,59 @@ const WeekView: React.FC<ViewProps> = ({ currentDate, events, calendars, onEvent
   const secondaryLabel = hasSecondaryTZ ? TIME_ZONES.find(tz => tz.value === timeZoneConfig.secondary)?.label.split(')')[0] + ')' : '';
 
   const getCalendarName = (id: string) => calendars.find(c => c.id === id)?.label || '';
+
+  // Logic to calculate lanes for overlapping events
+  const getDayEvents = (day: Date): PositionedEvent[] => {
+      const dayEvents = events.filter(e => isSameDay(e.start, day));
+      
+      // Sort by start time, then duration (longest first)
+      dayEvents.sort((a, b) => {
+          if (a.start.getTime() === b.start.getTime()) {
+              return b.end.getTime() - a.end.getTime();
+          }
+          return a.start.getTime() - b.start.getTime();
+      });
+
+      const lanes: CalendarEvent[][] = [];
+      const placedEvents: PositionedEvent[] = [];
+
+      dayEvents.forEach(event => {
+          let placed = false;
+          // Try to find a lane where this event fits
+          for (let i = 0; i < lanes.length; i++) {
+              const lastInLane = lanes[i][lanes[i].length - 1];
+              if (event.start.getTime() >= lastInLane.end.getTime()) {
+                  lanes[i].push(event);
+                  placed = true;
+                  // Store lane index for calculations below
+                  (event as any).laneIndex = i; 
+                  break;
+              }
+          }
+          if (!placed) {
+              lanes.push([event]);
+              (event as any).laneIndex = lanes.length - 1;
+          }
+      });
+
+      return dayEvents.map(event => {
+          const laneIndex = (event as any).laneIndex || 0;
+          const totalLanes = lanes.length;
+          const startMinutes = event.start.getHours() * 60 + event.start.getMinutes();
+          const durationMinutes = differenceInMinutes(event.end, event.start);
+
+          return {
+              ...event,
+              style: {
+                  top: `${startMinutes}px`,
+                  height: `${Math.max(durationMinutes, 25)}px`,
+                  left: `${(laneIndex / totalLanes) * 100}%`,
+                  width: `${100 / totalLanes}%`,
+                  zIndex: 10 + laneIndex
+              }
+          };
+      });
+  };
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900 overflow-hidden">
@@ -136,7 +199,7 @@ const WeekView: React.FC<ViewProps> = ({ currentDate, events, calendars, onEvent
                     {hasSecondaryTZ && <div className="w-full h-6 relative block"></div>}
                     
                     {weekDays.map((day, dayIndex) => {
-                        const dayEvents = events.filter(e => isSameDay(e.start, day));
+                        const positionedEvents = getDayEvents(day);
                         
                         return (
                             <div 
@@ -147,67 +210,55 @@ const WeekView: React.FC<ViewProps> = ({ currentDate, events, calendars, onEvent
                                     onTimeSlotClick && onTimeSlotClick(addDays(startOfDay(day), 0)); 
                                 }}
                             >
-                                {dayEvents.map(event => {
-                                    const startMinutes = event.start.getHours() * 60 + event.start.getMinutes();
-                                    const durationMinutes = differenceInMinutes(event.end, event.start);
-                                    
-                                    return (
-                                        <div
-                                            key={event.id}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                onEventClick(event);
-                                            }}
-                                            className={`absolute left-0.5 right-1 rounded shadow-sm px-2 py-1 overflow-hidden hover:z-40 hover:opacity-100 opacity-90 transition-all border group backdrop-blur-[1px]
-                                                ${event.isTask 
-                                                    ? 'border-blue-200 bg-blue-50/90 dark:bg-blue-900/40' 
-                                                    : 'border-white/20 dark:border-gray-600/30'
-                                                }
-                                            `}
-                                            style={{
-                                                top: `${startMinutes}px`,
-                                                height: `${Math.max(durationMinutes, 25)}px`,
-                                                backgroundColor: event.isTask ? undefined : `${event.color}E6`, // Slight transparency
-                                                boxShadow: event.isTask ? 'none' : `0 4px 6px -1px ${event.color}40`,
-                                                zIndex: 10
-                                            }}
-                                        >
-                                            <div className={`flex items-start gap-1 ${event.isTask ? 'text-blue-900 dark:text-blue-100' : 'text-white'}`}>
-                                                {event.isTask && (
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            if (onToggleTaskCompletion) onToggleTaskCompletion(event);
-                                                        }}
-                                                        className="mt-0.5 shrink-0"
-                                                    >
-                                                        {event.isCompleted ? (
-                                                            <div className="bg-blue-600 rounded text-white p-0.5 w-3 h-3 flex items-center justify-center">
-                                                                <Check size={8} strokeWidth={4} />
-                                                            </div>
-                                                        ) : (
-                                                            <div className="w-3 h-3 rounded border border-current"></div>
-                                                        )}
-                                                    </button>
-                                                )}
-                                                {event.isBirthday && <Cake size={12} className="mt-0.5 shrink-0" />}
-                                                <div className="min-w-0 flex flex-col">
-                                                    <div className={`text-xs font-semibold truncate leading-tight ${event.isCompleted ? 'line-through opacity-70' : ''}`}>
-                                                        {event.title}
-                                                    </div>
-                                                    <div className={`text-[10px] truncate ${event.isCompleted ? 'opacity-50' : 'opacity-90'}`}>
-                                                        {format(event.start, 'h:mm a')}
-                                                    </div>
-                                                    {!event.isTask && (
-                                                        <div className="text-[9px] opacity-80 truncate mt-0.5 hidden group-hover:block">
-                                                            {getCalendarName(event.calendarId)}
+                                {positionedEvents.map(event => (
+                                    <div
+                                        key={event.id}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onEventClick(event);
+                                        }}
+                                        className={`absolute rounded shadow-sm px-1 py-0.5 overflow-hidden hover:z-50 hover:opacity-100 opacity-90 transition-all border group backdrop-blur-[1px]
+                                            ${event.isTask 
+                                                ? 'border-blue-200 bg-blue-50/90 dark:bg-blue-900/40' 
+                                                : 'border-white/20 dark:border-gray-600/30'
+                                            }
+                                        `}
+                                        style={{
+                                            ...event.style,
+                                            backgroundColor: event.isTask ? undefined : `${event.color}E6`, // Slight transparency
+                                            boxShadow: event.isTask ? 'none' : `0 4px 6px -1px ${event.color}40`,
+                                        }}
+                                    >
+                                        <div className={`flex items-start gap-1 ${event.isTask ? 'text-blue-900 dark:text-blue-100' : 'text-white'}`}>
+                                            {event.isTask && (
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (onToggleTaskCompletion) onToggleTaskCompletion(event);
+                                                    }}
+                                                    className="mt-0.5 shrink-0"
+                                                >
+                                                    {event.isCompleted ? (
+                                                        <div className="bg-blue-600 rounded text-white p-0.5 w-3 h-3 flex items-center justify-center">
+                                                            <Check size={8} strokeWidth={4} />
                                                         </div>
+                                                    ) : (
+                                                        <div className="w-3 h-3 rounded border border-current"></div>
                                                     )}
+                                                </button>
+                                            )}
+                                            {event.isBirthday && <Cake size={12} className="mt-0.5 shrink-0" />}
+                                            <div className="min-w-0 flex flex-col">
+                                                <div className={`text-[10px] font-semibold truncate leading-tight ${event.isCompleted ? 'line-through opacity-70' : ''}`}>
+                                                    {event.title}
+                                                </div>
+                                                <div className={`text-[9px] truncate ${event.isCompleted ? 'opacity-50' : 'opacity-90'}`}>
+                                                    {format(event.start, 'h:mm a')}
                                                 </div>
                                             </div>
                                         </div>
-                                    );
-                                })}
+                                    </div>
+                                ))}
                             </div>
                         );
                     })}

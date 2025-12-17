@@ -74,10 +74,6 @@ const AgendaView: React.FC<ViewProps> = ({ currentDate, events, calendars, onEve
     return () => clearTimeout(timer);
   }, [currentDate, dates, groupedEvents]);
 
-  const getCalendarName = (calendarId: string) => {
-     return calendars.find(c => c.id === calendarId)?.label || '';
-  };
-
   const renderNowIndicator = (eventEnd: Date, nextEventStart: Date | null) => {
       if (!isSameDay(eventEnd, now)) return null;
       
@@ -177,7 +173,7 @@ const AgendaView: React.FC<ViewProps> = ({ currentDate, events, calendars, onEve
 
             <div className={`py-2 transition-colors duration-500 ${isHighlighted ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}>
               {groupEvents.map((event, idx) => {
-                const calName = getCalendarName(event.calendarId);
+                const calendar = calendars.find(c => c.id === event.calendarId);
                 const isLast = idx === groupEvents.length - 1;
                 const nextEvent = !isLast ? groupEvents[idx + 1] : null;
 
@@ -245,18 +241,31 @@ const AgendaView: React.FC<ViewProps> = ({ currentDate, events, calendars, onEve
                                         {event.title}
                                     </h4>
                                     
-                                    {!event.isTask && (
-                                        <div className="flex flex-wrap items-center gap-2 mt-1">
+                                    <div className="flex flex-wrap items-center gap-2 mt-1">
+                                        {!event.isTask && (
                                             <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
                                                 {format(event.start, 'h:mm a')} - {format(event.end, 'h:mm a')}
                                             </span>
-                                            {event.location && (
-                                                <span className="text-xs text-gray-400 dark:text-gray-500 truncate max-w-[120px]">
-                                                    • {event.location}
-                                                </span>
-                                            )}
-                                        </div>
-                                    )}
+                                        )}
+                                        
+                                        {calendar && (
+                                            <span 
+                                                className="text-[10px] font-bold px-2 py-0.5 rounded-[6px] tracking-wide"
+                                                style={{ 
+                                                    backgroundColor: `${calendar.color}15`,
+                                                    color: calendar.color
+                                                }}
+                                            >
+                                                {calendar.label}
+                                            </span>
+                                        )}
+
+                                        {event.location && !event.isTask && (
+                                            <span className="text-xs text-gray-400 dark:text-gray-500 truncate max-w-[120px]">
+                                                • {event.location}
+                                            </span>
+                                        )}
+                                    </div>
                                     
                                     {event.description && !event.isTask && (
                                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5 line-clamp-1">

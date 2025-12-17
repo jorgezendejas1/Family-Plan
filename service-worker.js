@@ -1,4 +1,4 @@
-const CACHE_NAME = 'familyplan-v1'; // Increment version to trigger update
+const CACHE_NAME = 'familyplan-v2'; // Bump version
 const urlsToCache = [
   './',
   './index.html',
@@ -17,14 +17,27 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // Strategy: Network First, falling back to Cache
+  // This ensures the user always gets the latest version if online.
+  
+  // Only handle GET requests
+  if (event.request.method !== 'GET') return;
+
   event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // Cache hit - return response
-        if (response) {
-          return response;
+    fetch(event.request)
+      .then((networkResponse) => {
+        // If valid network response, clone it and update cache
+        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+                cache.put(event.request, responseToCache);
+            });
         }
-        return fetch(event.request);
+        return networkResponse;
+      })
+      .catch(() => {
+        // Network failed, try cache
+        return caches.match(event.request);
       })
   );
 });
@@ -41,7 +54,6 @@ self.addEventListener('activate', (event) => {
         })
       );
     }).then(() => {
-      // Important: Claim clients immediately so the new SW controls the page
       return self.clients.claim();
     })
   );

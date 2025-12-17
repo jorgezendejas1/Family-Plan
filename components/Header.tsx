@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Menu, ChevronLeft, ChevronRight, Search, Settings, Sun, Moon, Monitor, BookOpen, CheckSquare, Calendar as CalendarIcon, Plus, ChevronDown, Grid3x3, Columns, LayoutList, Check, X, Filter } from 'lucide-react';
 import { format, endOfMonth, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths } from 'date-fns';
-import startOfMonth from 'date-fns/startOfMonth';
+import startOfMonth from 'date-fns/startOfWeek';
 import startOfWeek from 'date-fns/startOfWeek';
 import { es } from 'date-fns/locale';
 import { ViewType, SearchCriteria, Theme, CalendarConfig, CalendarEvent } from '../types';
@@ -59,8 +59,12 @@ const Header: React.FC<HeaderProps> = ({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const helpRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
-  const viewMenuRef = useRef<HTMLDivElement>(null);
-  const monthPickerRef = useRef<HTMLDivElement>(null);
+  
+  // Refs separados para Mobile y Desktop para evitar conflictos de "Click Outside"
+  const viewMenuRefDesktop = useRef<HTMLDivElement>(null);
+  const viewMenuRefMobile = useRef<HTMLDivElement>(null);
+  const monthPickerRefDesktop = useRef<HTMLDivElement>(null);
+  const monthPickerRefMobile = useRef<HTMLDivElement>(null);
 
   // Definición de las opciones de vista con sus iconos correspondientes
   const viewMenuOptions: { value: ViewType; label: string; icon: React.ReactNode }[] = [
@@ -81,17 +85,33 @@ const Header: React.FC<HeaderProps> = ({
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (helpRef.current && !helpRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+
+      // Help Menu
+      if (helpRef.current && !helpRef.current.contains(target)) {
         if (activeMenu === 'help') setActiveMenu(null);
       }
-      if (settingsRef.current && !settingsRef.current.contains(event.target as Node)) {
+      
+      // Settings Menu
+      if (settingsRef.current && !settingsRef.current.contains(target)) {
         if (activeMenu === 'settings') setActiveMenu(null);
       }
-      if (viewMenuRef.current && !viewMenuRef.current.contains(event.target as Node)) {
+      
+      // View Menu - Check both Desktop and Mobile refs
+      const clickedInsideViewDesktop = viewMenuRefDesktop.current && viewMenuRefDesktop.current.contains(target);
+      const clickedInsideViewMobile = viewMenuRefMobile.current && viewMenuRefMobile.current.contains(target);
+      
+      if (!clickedInsideViewDesktop && !clickedInsideViewMobile) {
         if (activeMenu === 'view') setActiveMenu(null);
       }
-      if (monthPickerRef.current && !monthPickerRef.current.contains(event.target as Node)) {
-        setIsMonthPickerOpen(false);
+      
+      // Month Picker - Check both Desktop and Mobile refs
+      const clickedInsideMonthDesktop = monthPickerRefDesktop.current && monthPickerRefDesktop.current.contains(target);
+      const clickedInsideMonthMobile = monthPickerRefMobile.current && monthPickerRefMobile.current.contains(target);
+
+      if (!clickedInsideMonthDesktop && !clickedInsideMonthMobile) {
+        // Solo cerramos si realmente está abierto para evitar cambios de estado innecesarios
+        setIsMonthPickerOpen(prev => prev ? false : prev);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -111,10 +131,17 @@ const Header: React.FC<HeaderProps> = ({
     setActiveMenu(activeMenu === menu ? null : menu);
   };
 
+  const handleViewOptionClick = (e: React.MouseEvent, optionValue: ViewType) => {
+      e.preventDefault();
+      e.stopPropagation(); // CRITICAL: Detiene que el evento llegue al document y cierre el menú antes de tiempo
+      onViewChange(optionValue);
+      setActiveMenu(null);
+  };
+
   const renderMonthPicker = () => {
-      const monthStart = startOfMonth(pickerDate);
+      const monthStart = startOfMonth(pickerDate); 
       const monthEnd = endOfMonth(pickerDate);
-      const startDate = startOfWeek(monthStart, { locale: es });
+      const startDate = startOfWeek(monthStart, { locale: es }); 
       const endDate = endOfWeek(monthEnd, { locale: es });
       const days = eachDayOfInterval({ start: startDate, end: endDate });
       const weekDays = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
@@ -213,7 +240,7 @@ const Header: React.FC<HeaderProps> = ({
           )}
 
           {/* LEFT PILL: Hamburger | Month Name (No Year) */}
-          <div className="flex items-center gap-2 bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl shadow-premium dark:shadow-premium-dark border border-white/40 dark:border-gray-700/40 rounded-full py-2 px-3 relative" ref={monthPickerRef}>
+          <div className="flex items-center gap-2 bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl shadow-premium dark:shadow-premium-dark border border-white/40 dark:border-gray-700/40 rounded-full py-2 px-3 relative" ref={monthPickerRefMobile}>
               <button 
                 onClick={onMenuClick} 
                 className="p-1 text-gray-700 dark:text-gray-200 active:scale-90 transition-transform"
@@ -236,9 +263,9 @@ const Header: React.FC<HeaderProps> = ({
               {isMonthPickerOpen && renderMonthPicker()}
           </div>
 
-          {/* RIGHT PILL: View | Search | Today (Calendar Icon) */}
+          {/* RIGHT PILL: View | Search | Tasks */}
           <div 
-             ref={viewMenuRef}
+             ref={viewMenuRefMobile}
              key={activeMenu === 'view' ? 'active' : 'inactive'} 
              className={`flex items-center gap-1 bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl shadow-premium dark:shadow-premium-dark border border-white/40 dark:border-gray-700/40 rounded-full py-1.5 pl-3 pr-1.5 relative ${activeMenu === 'view' ? 'animate-spring-press' : ''}`}
           >
@@ -260,12 +287,12 @@ const Header: React.FC<HeaderProps> = ({
                   <Search size={20} strokeWidth={2.5} />
               </button>
 
-              {/* Today Button (Calendar Icon) */}
+              {/* Tasks Trigger (Replaces Today) */}
               <button 
-                 onClick={onToday}
-                 className="p-2 text-gray-900 dark:text-white active:scale-90 transition-transform"
+                 onClick={onToggleTaskPanel}
+                 className={`p-2 active:scale-90 transition-transform ${isTaskPanelOpen ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-white'}`}
               >
-                  <CalendarIcon size={20} strokeWidth={2.5} />
+                  <CheckSquare size={20} strokeWidth={2.5} />
               </button>
 
               {/* Pop-over Menu */}
@@ -275,7 +302,8 @@ const Header: React.FC<HeaderProps> = ({
                        {viewMenuOptions.map((opt) => (
                             <button
                                 key={opt.value}
-                                onClick={() => { onViewChange(opt.value); toggleMenu('view'); }}
+                                type="button"
+                                onClick={(e) => handleViewOptionClick(e, opt.value)}
                                 className={`
                                     w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-colors
                                     ${view === opt.value 
@@ -310,7 +338,7 @@ const Header: React.FC<HeaderProps> = ({
                  <button onClick={onPrev} className="p-1 hover:bg-white dark:hover:bg-gray-700 rounded-md text-gray-500 dark:text-gray-400 transition-all shadow-sm"><ChevronLeft size={16} /></button>
                  <button onClick={onNext} className="p-1 hover:bg-white dark:hover:bg-gray-700 rounded-md text-gray-500 dark:text-gray-400 transition-all shadow-sm"><ChevronRight size={16} /></button>
              </div>
-             <div className="relative" ref={monthPickerRef}>
+             <div className="relative" ref={monthPickerRefDesktop}>
                <button 
                   onClick={() => setIsMonthPickerOpen(!isMonthPickerOpen)}
                   className="flex items-center gap-2 hover:bg-black/5 dark:hover:bg-white/10 px-2 py-1 rounded-lg transition-colors group"
@@ -353,7 +381,7 @@ const Header: React.FC<HeaderProps> = ({
 
           {/* RIGHT */}
           <div className="flex items-center gap-1.5 ml-auto">
-             <div className="relative" ref={viewMenuRef}>
+             <div className="relative" ref={viewMenuRefDesktop}>
                  <button
                     onClick={() => toggleMenu('view')}
                     className={`
@@ -376,7 +404,8 @@ const Header: React.FC<HeaderProps> = ({
                            {viewMenuOptions.map((opt) => (
                                 <button
                                     key={opt.value}
-                                    onClick={() => { onViewChange(opt.value); toggleMenu('view'); }}
+                                    type="button"
+                                    onClick={(e) => handleViewOptionClick(e, opt.value)}
                                     className={`
                                         w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-colors
                                         ${view === opt.value 
@@ -402,6 +431,15 @@ const Header: React.FC<HeaderProps> = ({
             >
                 <Plus size={16} strokeWidth={3} />
                 <span>Nuevo</span>
+            </button>
+
+            {/* TASKS BUTTON (INTEGRATED) */}
+            <button 
+                onClick={onToggleTaskPanel}
+                className={`p-2.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors ${isTaskPanelOpen ? 'bg-gray-100 dark:bg-gray-800 text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300'}`}
+                title="Tareas"
+            >
+                <CheckSquare size={20} strokeWidth={2.5} />
             </button>
 
              <div className="relative" ref={settingsRef}>

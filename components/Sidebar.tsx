@@ -71,11 +71,14 @@ const Sidebar: React.FC<SidebarProps> = ({
   const dragItem = useRef<number | null>(null);
   const dragOverItem = useRef<number | null>(null);
 
-  const miniMonthStart = startOfMonth(miniDate);
-  const miniMonthEnd = endOfMonth(miniDate);
-  const miniStartDate = startOfWeek(miniMonthStart, { locale: es });
-  const miniEndDate = endOfWeek(miniMonthEnd, { locale: es });
-  const miniDays = eachDayOfInterval({ start: miniStartDate, end: miniEndDate });
+  // OPTIMIZATION: Memoize mini calendar days calculation to avoid heavy repetitive computation
+  const miniDays = useMemo(() => {
+      const miniMonthStart = startOfMonth(miniDate);
+      const miniMonthEnd = endOfMonth(miniDate);
+      const miniStartDate = startOfWeek(miniMonthStart, { locale: es });
+      const miniEndDate = endOfWeek(miniMonthEnd, { locale: es });
+      return eachDayOfInterval({ start: miniStartDate, end: miniEndDate });
+  }, [miniDate]);
 
   const weekDays = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
 
@@ -315,48 +318,76 @@ const Sidebar: React.FC<SidebarProps> = ({
       className={`
         fixed inset-y-0 left-0 z-50 w-80 bg-white/95 dark:bg-gray-900/95 backdrop-blur-3xl transform transition-transform duration-500 cubic-bezier(0.19, 1, 0.22, 1) border-r border-gray-100 dark:border-gray-800 shadow-2xl
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-        lg:relative lg:translate-x-0 lg:w-72 lg:rounded-[32px] lg:my-3 lg:ml-3 lg:bg-white/80 lg:dark:bg-gray-900/80 lg:backdrop-blur-2xl lg:shadow-none lg:z-40
+        lg:relative lg:translate-x-0 lg:w-72 lg:rounded-[32px] lg:ml-3 lg:bg-white/80 lg:dark:bg-gray-900/80 lg:backdrop-blur-2xl lg:shadow-none lg:z-40
         flex flex-col h-full
       `}
     >
-      <div className="md:hidden flex flex-col w-full h-full overflow-y-auto overflow-x-hidden safe-area-pb">
-         {/* Mobile Header */}
-         <div className="px-6 py-6 mb-2 flex items-center justify-between sticky top-0 z-10 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md">
+      {/* MOBILE STRUCTURE: ABSOLUTE HEADER + SCROLLABLE CONTENT */}
+      <div className="md:hidden flex flex-col w-full h-full relative">
+         {/* Fixed Header */}
+         <div className="absolute top-0 left-0 right-0 z-30 px-6 py-6 h-[88px] flex items-center justify-between bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl border-b border-gray-100 dark:border-gray-800">
             <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Menú</h1>
             {onClose && (
-                <button onClick={onClose} className="p-2 -mr-2 bg-gray-100 dark:bg-gray-800 rounded-full text-gray-500">
-                    <X size={20} />
+                <button 
+                  type="button"
+                  onClick={(e) => {
+                      e.stopPropagation();
+                      onClose();
+                  }}
+                  className="p-3 -mr-3 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all active:scale-90 cursor-pointer"
+                >
+                    <X size={24} />
                 </button>
             )}
          </div>
 
-         <div className="px-4 mb-6">
-            <div className="bg-gray-50 dark:bg-gray-800/50 rounded-2xl p-2 space-y-1">
-                {viewOptions.map((option) => (
-                    <button
-                        key={option.value}
-                        onClick={() => { onViewChange(option.value); if(onClose) onClose(); }}
-                        className={`
-                            w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all
-                            ${currentView === option.value 
-                                ? 'bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm' 
-                                : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}
-                        `}
-                    >
-                        <span className={currentView === option.value ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}>
-                            {option.icon}
-                        </span>
-                        <span>{option.label}</span>
-                    </button>
-                ))}
+         {/* Scrollable Content (Padded at top for header) */}
+         <div className="flex-1 overflow-y-auto overflow-x-hidden pt-[88px] safe-area-pb">
+            <div className="px-4 mb-6 mt-2">
+                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-2xl p-2 space-y-1">
+                    {viewOptions.map((option) => (
+                        <button
+                            key={option.value}
+                            onClick={() => { onViewChange(option.value); if(onClose) onClose(); }}
+                            className={`
+                                w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all
+                                ${currentView === option.value 
+                                    ? 'bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm' 
+                                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}
+                            `}
+                        >
+                            <span className={currentView === option.value ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}>
+                                {option.icon}
+                            </span>
+                            <span>{option.label}</span>
+                        </button>
+                    ))}
+                </div>
             </div>
+            
+            {renderContent()}
+            <div className="h-20 w-full"></div>
          </div>
-         
-         {renderContent()}
-         <div className="h-20 w-full"></div>
       </div>
 
-      <div className="hidden md:flex flex-col h-full overflow-y-auto custom-scrollbar pt-8">
+      <div className="hidden md:flex flex-col h-full overflow-y-auto custom-scrollbar pt-6">
+          {/* Tablet Overlay Header (Visible only when sidebar is an overlay, i.e., < lg) */}
+          <div className="lg:hidden flex justify-between items-center px-6 mb-6">
+             <h2 className="text-xl font-bold text-gray-900 dark:text-white">Menú</h2>
+             {onClose && (
+                <button 
+                  type="button"
+                  onClick={(e) => {
+                      e.stopPropagation();
+                      onClose();
+                  }}
+                  className="p-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full text-gray-500 transition-colors"
+                >
+                    <X size={20} />
+                </button>
+             )}
+          </div>
+
           {/* PREMIUM CREATE BUTTON */}
           <div className="relative mb-8 px-6 flex-shrink-0" ref={createMenuRef}>
             <button 

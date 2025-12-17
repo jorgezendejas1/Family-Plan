@@ -11,7 +11,9 @@ import {
   isBefore,
   isAfter,
   differenceInMinutes,
-  addMinutes
+  addMinutes,
+  differenceInWeeks,
+  differenceInMonths
 } from 'date-fns';
 import startOfWeek from 'date-fns/startOfWeek';
 import startOfMonth from 'date-fns/startOfMonth';
@@ -47,6 +49,7 @@ export const formatTime = (date: Date) => {
 
 /**
  * Expands recurring events into individual instances for a specific time range.
+ * OPTIMIZED V2: Smart jump logic for all recurrence types to save CPU.
  */
 export const generateRecurringEvents = (
   events: CalendarEvent[], 
@@ -54,36 +57,79 @@ export const generateRecurringEvents = (
   rangeEnd: Date
 ): CalendarEvent[] => {
   const result: CalendarEvent[] = [];
+  
+  // Cache times for performance comparison
+  const rangeStartMs = rangeStart.getTime();
+  const rangeEndMs = rangeEnd.getTime();
 
   events.forEach(event => {
-    // If no recurrence, checks if it falls within range
+    // 1. Quick check: If event starts WAY after range end, skip entirely
+    if (event.start.getTime() > rangeEndMs) return;
+
+    // 2. Quick check: If event ended WAY before range start and has no recurrence, skip
+    if ((!event.recurrence || event.recurrence === 'none') && event.end.getTime() < rangeStartMs) {
+      return;
+    }
+
+    // If no recurrence, standard check
     if (!event.recurrence || event.recurrence === 'none') {
-      if (isAfter(event.end, rangeStart) && isBefore(event.start, rangeEnd)) {
+      if (event.start.getTime() <= rangeEndMs && event.end.getTime() >= rangeStartMs) {
         result.push(event);
       }
       return;
     }
 
+    // RECURRENCE LOGIC
     const duration = differenceInMinutes(event.end, event.start);
     let currentStart = new Date(event.start);
     
-    // Safety break to prevent infinite loops
+    // SAFETY: Prevent infinite loops
     let iterations = 0;
-    const MAX_ITERATIONS = 500; // Reduced for performance safety
+    const MAX_ITERATIONS = 500; 
+
+    // OPTIMIZATION: "Teleport" currentStart closer to rangeStart
+    // This avoids iterating day-by-day from 2020 to 2025.
+    if (currentStart.getTime() < rangeStartMs) {
+       if (event.recurrence === 'daily') {
+          const daysDiff = Math.floor((rangeStartMs - currentStart.getTime()) / (1000 * 60 * 60 * 24));
+          if (daysDiff > 0) currentStart = addDays(currentStart, daysDiff - 1);
+       } 
+       else if (event.recurrence === 'weekly') {
+          // Jump full weeks to maintain the "Day of Week" alignment
+          const weeksDiff = Math.floor(differenceInWeeks(rangeStart, currentStart));
+          if (weeksDiff > 0) currentStart = addWeeks(currentStart, weeksDiff - 1);
+       }
+       else if (event.recurrence === 'monthly') {
+          // Jump full months to maintain "Day of Month" alignment
+          const monthsDiff = differenceInMonths(rangeStart, currentStart);
+          if (monthsDiff > 0) currentStart = addMonths(currentStart, monthsDiff - 1);
+       }
+       else if (event.recurrence === 'yearly') {
+          // Jump years
+          const currentYear = currentStart.getFullYear();
+          const targetYear = rangeStart.getFullYear();
+          const yearDiff = targetYear - currentYear;
+          if (yearDiff > 0) currentStart = addYears(currentStart, yearDiff - 1);
+       }
+    }
 
     while (isBefore(currentStart, rangeEnd) && iterations < MAX_ITERATIONS) {
       iterations++;
       
-      // Check if recurrence has ended
+      // Check if recurrence has ended globally
       if (event.recurrenceEnds && isAfter(currentStart, event.recurrenceEnds)) {
         break;
       }
 
-      // Calculate end time using addMinutes for safe duration handling (handles DST better than raw milliseconds)
+      // Calculate end time
       const currentEnd = addMinutes(currentStart, duration);
 
       // Only add if it overlaps with the view range and starts on/after the original start date
-      if (isAfter(currentEnd, rangeStart) && !isBefore(currentStart, event.start)) {
+      if (
+          currentEnd.getTime() >= rangeStartMs && 
+          currentStart.getTime() <= rangeEndMs &&
+          !isBefore(currentStart, event.start)
+      ) {
         
         // Check for exceptions (exdates)
         const isExcluded = event.exdates?.some(exDate => isSameDay(exDate, currentStart));
