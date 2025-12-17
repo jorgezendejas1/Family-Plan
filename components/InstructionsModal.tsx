@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, CalendarPlus, Settings, Sparkles, Command, CheckSquare, RefreshCcw } from 'lucide-react';
+import { X, CalendarPlus, Settings, Sparkles, Command, CheckSquare, RefreshCcw, Palette, Smartphone } from 'lucide-react';
 
 interface InstructionsModalProps {
   isOpen: boolean;
@@ -11,24 +11,36 @@ const InstructionsModal: React.FC<InstructionsModalProps> = ({ isOpen, onClose }
 
   const sections = [
     {
-      title: "Crear y Gestionar Eventos",
-      icon: <CalendarPlus className="text-blue-600 dark:text-blue-400" size={24} />,
+      title: "Gestión Avanzada de Tareas",
+      icon: <CheckSquare className="text-emerald-600 dark:text-emerald-400" size={24} />,
       content: (
         <ul className="list-disc list-inside space-y-2 text-sm text-gray-600 dark:text-gray-300">
-          <li><strong>Crear:</strong> Usa el botón "+" o haz clic en cualquier hueco del calendario.</li>
-          <li><strong>Arrastrar:</strong> En vistas de Semana/Día, arrastra para mover o cambiar la duración.</li>
-          <li><strong>Papelera:</strong> ¿Borraste algo por error? Abre la papelera en la barra lateral para restaurar eventos eliminados recientemente.</li>
+          <li><strong>Panel Lateral:</strong> Accede tocando el icono (☑️) en la cabecera.</li>
+          <li><strong>Categorías:</strong> Ahora puedes asignar un calendario a cada tarea (ej. "Trabajo", "Personal") para verla con su etiqueta de color correspondiente.</li>
+          <li><strong>Prioridad:</strong> Usa la estrella (⭐) para marcar tareas importantes; aparecerán primero en la lista.</li>
+          <li><strong>Limpieza:</strong> Usa el menú (...) del panel para ocultar o eliminar tareas completadas en lote.</li>
         </ul>
       )
     },
     {
-      title: "Tareas y Productividad",
-      icon: <CheckSquare className="text-emerald-600 dark:text-emerald-400" size={24} />,
+      title: "Agenda y Organización Visual",
+      icon: <Palette className="text-pink-600 dark:text-pink-400" size={24} />,
       content: (
         <ul className="list-disc list-inside space-y-2 text-sm text-gray-600 dark:text-gray-300">
-          <li><strong>Panel Lateral:</strong> Actívalo con el icono de "check" en la cabecera para ver tu lista to-do.</li>
-          <li><strong>Prioridad:</strong> Marca tareas como importantes con la estrella (⭐) para que aparezcan primero.</li>
-          <li><strong>Completar:</strong> Marca las casillas desde el panel o directamente desde las vistas de calendario.</li>
+          <li><strong>Etiquetas de Calendario:</strong> En la vista de Agenda y en el Panel de Tareas, verás una etiqueta sutil con el nombre del calendario.</li>
+          <li><strong>Colores:</strong> El diseño ahora utiliza fondos tintados suaves para facilitar la lectura sin cansar la vista.</li>
+          <li><strong>Indicador 'Ahora':</strong> Una línea roja en las vistas de Agenda, Día y Semana te indica el momento exacto actual.</li>
+        </ul>
+      )
+    },
+    {
+      title: "Asistente IA (Gemini)",
+      icon: <Sparkles className="text-yellow-500" size={24} />,
+      content: (
+        <ul className="list-disc list-inside space-y-2 text-sm text-gray-600 dark:text-gray-300">
+          <li><strong>Detección de Conflictos:</strong> Si intentas crear un evento que se solapa con otro, la IA te mostrará una alerta amarilla antes de confirmar.</li>
+          <li><strong>Borradores Inteligentes:</strong> La IA genera una tarjeta de vista previa (estilo Wallet). Puedes revisarla y confirmar o descartar.</li>
+          <li><strong>Multimedia:</strong> Sube fotos de invitaciones o volantes; la IA extraerá los datos automáticamente.</li>
         </ul>
       )
     },
@@ -38,42 +50,31 @@ const InstructionsModal: React.FC<InstructionsModalProps> = ({ isOpen, onClose }
       content: (
         <ul className="list-disc list-inside space-y-2 text-sm text-gray-600 dark:text-gray-300">
           <li><strong>Visibilidad:</strong> Muestra u oculta categorías usando los checkboxes del menú lateral.</li>
-          <li><strong>Personalizar:</strong> Crea nuevos calendarios o edita el color y nombre de los existentes.</li>
-          <li><strong>Organizar:</strong> Arrastra y suelta los calendarios en la lista para cambiar su orden de prioridad.</li>
+          <li><strong>Orden y Edición:</strong> En el menú lateral puedes ordenar, editar colores y renombrar tus calendarios locales.</li>
+          <li><strong>Google Calendar:</strong> Conecta tu cuenta para visualizar (modo lectura) tus eventos de la nube junto a los locales.</li>
         </ul>
       )
     },
     {
-      title: "Asistente IA (Gemini)",
-      icon: <Sparkles className="text-yellow-500" size={24} />,
+      title: "App, Actualizaciones y PWA",
+      icon: <Smartphone className="text-blue-600 dark:text-blue-400" size={24} />,
       content: (
         <ul className="list-disc list-inside space-y-2 text-sm text-gray-600 dark:text-gray-300">
-          <li><strong>Chat:</strong> Pide crear eventos complejos ("Clase de yoga martes y jueves").</li>
-          <li><strong>Multimedia:</strong> Sube fotos de invitaciones o volantes; la IA extraerá los datos automáticamente.</li>
-          <li><strong>Voz:</strong> Usa el micrófono para dictar tus planes mientras caminas.</li>
+          <li><strong>Instalación:</strong> Puedes instalar esta web como una App nativa en iOS (Compartir -> Agregar a Inicio) y Android.</li>
+          <li><strong>Actualizaciones:</strong> Si hay una nueva versión disponible, verás un aviso emergente abajo a la izquierda para actualizar al instante.</li>
+          <li><strong>Offline:</strong> Funciona sin internet (los datos se guardan en tu dispositivo).</li>
         </ul>
       )
     },
     {
-      title: "Sincronización y Datos",
-      icon: <RefreshCcw className="text-indigo-600 dark:text-indigo-400" size={24} />,
-      content: (
-        <ul className="list-disc list-inside space-y-2 text-sm text-gray-600 dark:text-gray-300">
-          <li><strong>Google Calendar:</strong> Conecta tu cuenta desde la barra lateral para ver tus eventos de la nube.</li>
-          <li><strong>Importar/Exportar:</strong> Ve a Ajustes para descargar una copia de seguridad (.ics) o importar eventos de otras apps.</li>
-          <li><strong>Offline:</strong> La app funciona sin internet (los datos se guardan en tu dispositivo).</li>
-        </ul>
-      )
-    },
-    {
-      title: "Atajos y Vistas",
+      title: "Atajos de Teclado",
       icon: <Command className="text-gray-600 dark:text-gray-400" size={24} />,
       content: (
         <ul className="list-disc list-inside space-y-2 text-sm text-gray-600 dark:text-gray-300">
-          <li>Teclas <strong>J / K</strong>: Anterior / Siguiente fecha.</li>
+          <li>Teclas <strong>J / K</strong>: Ir al futuro / pasado.</li>
           <li>Tecla <strong>T</strong>: Volver a Hoy.</li>
-          <li>Tecla <strong>/</strong>: Búsqueda rápida.</li>
-          <li><strong>Filtros:</strong> Usa el icono de ajustes en la barra de búsqueda para filtrar por fecha o calendario específico.</li>
+          <li>Tecla <strong>C</strong>: Crear nuevo evento.</li>
+          <li>Tecla <strong>/</strong>: Búsqueda rápida global.</li>
         </ul>
       )
     }
@@ -85,7 +86,7 @@ const InstructionsModal: React.FC<InstructionsModalProps> = ({ isOpen, onClose }
         
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
-          <h2 className="text-xl font-bold text-gray-800 dark:text-white">Manual de Usuario</h2>
+          <h2 className="text-xl font-bold text-gray-800 dark:text-white">Manual de Usuario y Novedades</h2>
           <button 
             onClick={onClose}
             className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
@@ -112,7 +113,7 @@ const InstructionsModal: React.FC<InstructionsModalProps> = ({ isOpen, onClose }
 
           <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800 text-center">
             <p className="text-sm text-blue-800 dark:text-blue-200 font-medium">
-              💡 Tus datos locales se guardan en este dispositivo. Para mayor seguridad, te recomendamos exportar copias de seguridad regularmente o sincronizar con Google.
+              💡 Tus datos locales se guardan en este dispositivo. Para mayor seguridad, te recomendamos exportar copias de seguridad regularmente desde Configuración.
             </p>
           </div>
         </div>

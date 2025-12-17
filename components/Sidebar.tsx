@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Plus, ChevronLeft, ChevronRight, LayoutList, Calendar as CalendarIcon, Grid3x3, Columns, Settings, Edit2, Sun, Moon, Monitor, ChevronDown, CalendarPlus, ArrowDownAZ, Palette, ListFilter, Eye, EyeOff, Plug, LogOut, Check, Download, X, Cake, CheckSquare, GripVertical } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, LayoutList, Calendar as CalendarIcon, Grid3x3, Columns, Settings, Edit2, Sun, Moon, Monitor, ChevronDown, CalendarPlus, ArrowDownAZ, Palette, ListFilter, Eye, EyeOff, Plug, LogOut, Check, Download, X, Cake, CheckSquare, GripVertical, BookOpen } from 'lucide-react';
 import { format, endOfWeek, eachDayOfInterval, endOfMonth, isSameDay, isSameMonth, addMonths } from 'date-fns';
 import startOfWeek from 'date-fns/startOfWeek';
 import startOfMonth from 'date-fns/startOfMonth';
@@ -31,6 +31,7 @@ interface SidebarProps {
   isGoogleLoading?: boolean;
   onOpenTrash?: () => void;
   onOpenSettings?: () => void;
+  onShowInstructions?: () => void;
   deferredPrompt?: any;
   onInstallPwa?: () => void;
   onClose?: () => void;
@@ -59,6 +60,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onDisconnectGoogle,
   isGoogleLoading = false,
   onOpenSettings,
+  onShowInstructions,
   deferredPrompt,
   onInstallPwa,
   onClose
@@ -303,7 +305,26 @@ const Sidebar: React.FC<SidebarProps> = ({
               )}
           </div>
 
-          <div className="px-6 pb-6 pt-2 mt-auto">
+          <div className="px-6 pb-6 pt-2 mt-auto space-y-3">
+               {/* SETTINGS AND HELP BUTTONS */}
+               <div className="grid grid-cols-2 gap-3">
+                  <button 
+                    onClick={onOpenSettings} 
+                    className="flex items-center justify-center gap-2 py-2.5 bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-xl transition-colors text-xs font-bold text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700"
+                  >
+                      <Settings size={14} />
+                      Configuración
+                  </button>
+                  <button 
+                    onClick={onShowInstructions} 
+                    className="flex items-center justify-center gap-2 py-2.5 bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-xl transition-colors text-xs font-bold text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700"
+                  >
+                      <BookOpen size={14} />
+                      Ayuda
+                  </button>
+               </div>
+
+               {/* THEME SWITCHER */}
                <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 p-1 rounded-full border border-gray-100 dark:border-gray-800">
                   <button onClick={() => onThemeChange('light')} className={`p-2 rounded-full transition-all ${theme === 'light' ? 'bg-white dark:bg-gray-700 shadow-sm text-yellow-500' : 'text-gray-400'}`}><Sun size={16} /></button>
                   <button onClick={() => onThemeChange('system')} className={`p-2 rounded-full transition-all ${theme === 'system' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-500' : 'text-gray-400'}`}><Monitor size={16} /></button>
@@ -316,33 +337,30 @@ const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside 
       className={`
-        fixed inset-y-0 left-0 z-50 w-80 bg-white/95 dark:bg-gray-900/95 backdrop-blur-3xl transform transition-transform duration-500 cubic-bezier(0.19, 1, 0.22, 1) border-r border-gray-100 dark:border-gray-800 shadow-2xl
-        ${isOpen ? 'translate-x-0' : '-translate-x-full'}
-        lg:relative lg:translate-x-0 lg:w-72 lg:rounded-[32px] lg:ml-3 lg:bg-white/80 lg:dark:bg-gray-900/80 lg:backdrop-blur-2xl lg:shadow-none lg:z-40
-        flex flex-col h-full
+        absolute top-2 bottom-4 left-4 z-50 w-80 bg-white/95 dark:bg-gray-900/95 backdrop-blur-3xl transform transition-transform duration-500 cubic-bezier(0.19, 1, 0.22, 1) border border-gray-100 dark:border-gray-800 shadow-2xl rounded-3xl
+        ${isOpen ? 'translate-x-0' : '-translate-x-[120%]'}
+        lg:relative lg:top-0 lg:bottom-0 lg:left-0 lg:h-full lg:w-72 lg:rounded-[32px] lg:ml-3 lg:bg-white/80 lg:dark:bg-gray-900/80 lg:backdrop-blur-2xl lg:shadow-none lg:z-40 lg:border-r lg:border-t-0 lg:border-b-0 lg:border-l-0 lg:translate-x-0
+        flex flex-col
       `}
     >
-      {/* MOBILE STRUCTURE: ABSOLUTE HEADER + SCROLLABLE CONTENT */}
+      {/* MOBILE STRUCTURE: HEADER + SCROLLABLE CONTENT */}
       <div className="md:hidden flex flex-col w-full h-full relative">
-         {/* Fixed Header */}
-         <div className="absolute top-0 left-0 right-0 z-30 px-6 py-6 h-[88px] flex items-center justify-between bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl border-b border-gray-100 dark:border-gray-800">
-            <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">Menú</h1>
+         {/* Sidebar Header (Simplified for floating panel) */}
+         <div className="px-6 py-5 flex items-center justify-between border-b border-gray-100 dark:border-gray-800">
+            <h1 className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">Menú</h1>
             {onClose && (
                 <button 
                   type="button"
-                  onClick={(e) => {
-                      e.stopPropagation();
-                      onClose();
-                  }}
-                  className="p-3 -mr-3 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-all active:scale-90 cursor-pointer"
+                  onClick={onClose}
+                  className="p-2 -mr-2 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors active:bg-gray-200 dark:active:bg-gray-700 cursor-pointer"
                 >
-                    <X size={24} />
+                    <X size={20} />
                 </button>
             )}
          </div>
 
-         {/* Scrollable Content (Padded at top for header) */}
-         <div className="flex-1 overflow-y-auto overflow-x-hidden pt-[88px] safe-area-pb">
+         {/* Scrollable Content */}
+         <div className="flex-1 overflow-y-auto overflow-x-hidden pt-2 safe-area-pb">
             <div className="px-4 mb-6 mt-2">
                 <div className="bg-gray-50 dark:bg-gray-800/50 rounded-2xl p-2 space-y-1">
                     {viewOptions.map((option) => (
@@ -366,7 +384,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             </div>
             
             {renderContent()}
-            <div className="h-20 w-full"></div>
+            <div className="h-4 w-full md:hidden"></div>
          </div>
       </div>
 
@@ -377,11 +395,8 @@ const Sidebar: React.FC<SidebarProps> = ({
              {onClose && (
                 <button 
                   type="button"
-                  onClick={(e) => {
-                      e.stopPropagation();
-                      onClose();
-                  }}
-                  className="p-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full text-gray-500 transition-colors"
+                  onClick={onClose}
+                  className="p-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full text-gray-500 transition-colors cursor-pointer"
                 >
                     <X size={20} />
                 </button>

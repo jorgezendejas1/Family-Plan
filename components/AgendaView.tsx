@@ -1,5 +1,5 @@
 import React, { useMemo, useEffect, useState, useRef } from 'react';
-import { format, isToday, isTomorrow, isBefore, addDays, isSameDay } from 'date-fns';
+import { format, isToday, isTomorrow, isBefore, addDays, isSameDay, parse } from 'date-fns';
 import startOfDay from 'date-fns/startOfDay';
 import { es } from 'date-fns/locale';
 import { CalendarEvent, ViewProps } from '../types';
@@ -131,7 +131,7 @@ const AgendaView: React.FC<ViewProps> = ({ currentDate, events, calendars, onEve
       )}
 
       {dates.map((dateStr, dateIdx) => {
-        const dateObj = new Date(dateStr + 'T00:00:00');
+        const dateObj = parse(dateStr, 'yyyy-MM-dd', new Date());
         const groupEvents = groupedEvents[dateStr];
         const isTodayDate = isToday(dateObj);
         const isTomorrowDate = isTomorrow(dateObj);

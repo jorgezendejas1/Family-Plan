@@ -1,3 +1,4 @@
+
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -19,14 +20,16 @@ app.use(express.json({ limit: '10mb' }));
 // --- CONFIGURATION ---
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+// Coding Guideline: obtain apiKey exclusively from process.env.API_KEY
+const API_KEY = process.env.API_KEY;
 
-if (!SUPABASE_URL || !SUPABASE_KEY || !GEMINI_API_KEY) {
+if (!SUPABASE_URL || !SUPABASE_KEY || !API_KEY) {
   console.warn("Missing environment variables. Check Cloud Run configuration.");
 }
 
 const supabase = createClient(SUPABASE_URL || '', SUPABASE_KEY || '');
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+// Coding Guideline: new GoogleGenAI({apiKey: process.env.API_KEY})
+const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 // --- API ROUTES ---
 
@@ -90,8 +93,9 @@ app.post('/api/process-event', async (req, res) => {
       .filter(m => (m.role === 'user' || m.role === 'model') && !m.eventDraft)
       .map(m => ({ role: m.role, parts: [{ text: m.text || '' }] }));
     
+    // Update model to gemini-3-pro-preview for complex reasoning tasks
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-pro-preview',
       contents: [...geminiHistory, { role: 'user', parts: [{ text: message }] }],
       config: { systemInstruction, tools: [{ functionDeclarations: [createEventTool] }] }
     });

@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Send, X, Paperclip, Image as ImageIcon, Video, Mic, 
@@ -98,9 +99,6 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
   const [messages, setMessages] = useState<Message[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
 
-  // Initialize AI
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
   useEffect(() => {
     const loadHistory = async () => {
         const history = await dataService.getChatHistory();
@@ -146,6 +144,9 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
 
   const handleSend = async () => {
     if ((!input.trim() && !attachment) || isLoading) return;
+
+    // Guideline: Create GoogleGenAI right before making the call
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -228,8 +229,9 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
           currentContentParts.push({ inlineData: { mimeType, data: base64Data } });
       }
 
+      // Guideline: Use gemini-3-pro-preview for complex reasoning tasks
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3-pro-preview',
         contents: [
             ...apiHistory, 
             { role: 'user', parts: currentContentParts }
@@ -240,6 +242,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
         }
       });
 
+      // Guideline: Extract function calls from property
       const toolCalls = response.functionCalls;
       const text = response.text;
 
@@ -493,7 +496,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
                  <div className="w-6 h-6 rounded-full bg-gray-200 dark:bg-gray-800 flex items-center justify-center shrink-0">
                      <Bot size={14} className="text-gray-500" />
                  </div>
-                 <div className="bg-gray-200 dark:bg-[#262628] rounded-[20px] rounded-bl-[4px] px-4 py-3 flex gap-1">
+                 <div className="bg-ios-gray dark:bg-ios-darkGray rounded-[20px] rounded-bl-[4px] px-4 py-3 flex gap-1">
                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></span>
                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></span>
                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
@@ -541,7 +544,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
                 className={`w-[34px] h-[34px] rounded-full flex items-center justify-center mb-0.5 transition-all ${
                     (!input.trim() && !attachment) 
                         ? 'bg-gray-200 dark:bg-gray-700 text-gray-400' 
-                        : 'bg-blue-500 text-white shadow-md active:scale-90'
+                        : 'bg-ios-blue text-white shadow-md active:scale-90'
                 }`}
              >
                  <ArrowUp size={18} strokeWidth={3} />

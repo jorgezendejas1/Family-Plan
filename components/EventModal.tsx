@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Clock, AlignLeft, Calendar as CalendarIcon, Trash2, Bell, Plus, ChevronDown, Cake, MapPin, CheckCircle2, Star, AlertTriangle, Repeat, Tag } from 'lucide-react';
+import { X, Clock, AlignLeft, Calendar as CalendarIcon, Trash2, Bell, Plus, ChevronDown, Cake, MapPin, CheckCircle2, Star, AlertTriangle, Repeat, Tag, Check } from 'lucide-react';
 import { CalendarEvent, RecurrenceType, CalendarConfig } from '../types';
 import { EVENT_COLORS, REMINDER_OPTIONS, MOCK_LOCATIONS } from '../constants';
 import { format, isValid, addDays, isBefore } from 'date-fns';
@@ -91,7 +91,11 @@ const EventModal: React.FC<EventModalProps> = ({
             setReminderMinutes([15]);
         }
       } else {
-        const d = initialDate || new Date();
+        let d = initialDate;
+        if (!d || !isValid(d)) {
+            d = new Date();
+        }
+        
         setTitle('');
         setDescription('');
         setStartDate(format(d, 'yyyy-MM-dd'));
@@ -143,7 +147,6 @@ const EventModal: React.FC<EventModalProps> = ({
     }
   }, [isBirthday, calendars, isOpen, existingEvent]);
 
-  // Recurrence Validation Effect
   useEffect(() => {
     if (!startDate) {
         setRecurrenceWarning(null);
@@ -154,7 +157,7 @@ const EventModal: React.FC<EventModalProps> = ({
     if (!isValid(date)) return;
 
     const day = date.getDate();
-    const month = date.getMonth(); // 0 = Jan, 1 = Feb
+    const month = date.getMonth();
 
     let warning = null;
 
@@ -194,19 +197,19 @@ const EventModal: React.FC<EventModalProps> = ({
     e.preventDefault();
     if (!title || !startDate) return;
     
-    const effectiveStartTime = (isBirthday || type === 'task') ? '09:00' : startTime;
-    const effectiveEndTime = (isBirthday || type === 'task') ? '09:30' : endTime;
+    const effectiveStartTime = isBirthday ? '09:00' : startTime;
+    const effectiveEndTime = isBirthday ? '09:30' : endTime;
 
     if (!effectiveStartTime || !effectiveEndTime) return;
 
     const startDateTime = parse(`${startDate} ${effectiveStartTime}`, 'yyyy-MM-dd HH:mm', new Date());
     let endDateTime = parse(`${startDate} ${effectiveEndTime}`, 'yyyy-MM-dd HH:mm', new Date());
 
+    if (!isValid(startDateTime) || !isValid(endDateTime)) return;
+
     if (isBefore(endDateTime, startDateTime)) {
         endDateTime = addDays(endDateTime, 1);
     }
-
-    if (!isValid(startDateTime) || !isValid(endDateTime)) return;
 
     const cleanId = existingEvent?.id ? existingEvent.id.split('_')[0] : undefined;
     
@@ -281,9 +284,8 @@ const EventModal: React.FC<EventModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md p-4 transition-all">
       <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur-2xl rounded-[28px] shadow-2xl w-full max-w-[500px] flex flex-col max-h-[90vh] md:max-h-[85vh] animate-scale-in border border-white/20 dark:border-gray-700 overflow-hidden relative">
         
-        {/* Header Actions */}
         <div className="flex items-center justify-between px-5 py-4 shrink-0 bg-white/50 dark:bg-gray-900/50 backdrop-blur-md sticky top-0 z-20">
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-white transition-colors text-sm font-medium">
+          <button onClick={onClose} className="text-ios-blue dark:text-blue-400 hover:text-gray-800 transition-colors text-sm font-bold">
              Cancelar
           </button>
           
@@ -299,12 +301,9 @@ const EventModal: React.FC<EventModalProps> = ({
           </div>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-y-auto custom-scrollbar px-6 pb-8 pt-2">
             
-            {/* Title Section */}
             <div className="mb-6">
-                 {/* Type Toggle - iOS Segmented Control Style */}
                  {!existingEvent && (
                     <div className="flex p-1 bg-gray-200/50 dark:bg-gray-800 rounded-lg mb-4 w-full max-w-[200px] relative">
                         <div 
@@ -340,10 +339,8 @@ const EventModal: React.FC<EventModalProps> = ({
 
             <div className="space-y-4">
                 
-                {/* Section: Main Details */}
+                {/* Section: Main Details (Date & Time) */}
                 <div className="bg-gray-50 dark:bg-gray-800/50 rounded-2xl p-4 space-y-4 border border-gray-100 dark:border-gray-700/50">
-                    
-                    {/* All Day / Birthday Toggles */}
                     <div className="flex items-center justify-between">
                          <div className="flex items-center gap-3">
                              <div className="w-8 h-8 rounded-full bg-pink-100 dark:bg-pink-900/30 flex items-center justify-center text-pink-500">
@@ -361,7 +358,6 @@ const EventModal: React.FC<EventModalProps> = ({
 
                     <div className="w-full h-px bg-gray-200 dark:bg-gray-700/50"></div>
 
-                    {/* Date & Time */}
                     <div className="flex items-start gap-3">
                         <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-500 shrink-0">
                              <Clock size={16} />
@@ -376,7 +372,7 @@ const EventModal: React.FC<EventModalProps> = ({
                                  />
                              </div>
 
-                             {!isBirthday && type === 'event' && (
+                             {!isBirthday && (
                                 <div className="flex items-center gap-2">
                                      <div className="flex-1 bg-white dark:bg-gray-700 rounded-xl px-3 py-2 border border-gray-200 dark:border-gray-600">
                                         <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="bg-transparent text-gray-800 dark:text-white text-sm font-medium outline-none w-full" />
@@ -390,7 +386,6 @@ const EventModal: React.FC<EventModalProps> = ({
                         </div>
                     </div>
 
-                    {/* Recurrence */}
                     {type === 'event' && (
                         <>
                             <div className="w-full h-px bg-gray-200 dark:bg-gray-700/50"></div>
@@ -418,63 +413,71 @@ const EventModal: React.FC<EventModalProps> = ({
                     )}
                 </div>
 
-                {/* Section: Metadata */}
-                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-2xl p-4 space-y-4 border border-gray-100 dark:border-gray-700/50">
-                    
-                    {type === 'event' && (
-                        <div className="flex items-center gap-3">
-                             <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-500 shrink-0">
-                                 <Tag size={16} />
-                             </div>
-                             <div className="relative flex-1">
-                                <select 
-                                    value={calendarId}
-                                    onChange={(e) => handleCalendarChange(e.target.value)}
-                                    className="w-full bg-transparent text-gray-800 dark:text-white text-sm font-semibold outline-none appearance-none pr-8 py-1"
+                {/* NEW INTEGRATED CALENDAR SELECTOR (Pill style) */}
+                <div className="py-2 animate-fade-in-up">
+                    <p className="text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3 px-1">Selección de Calendario</p>
+                    <div className="flex gap-2 overflow-x-auto custom-scrollbar pb-2 -mx-1 px-1">
+                        {calendars.map((cal) => {
+                            const isSelected = calendarId === cal.id;
+                            return (
+                                <button
+                                    key={cal.id}
+                                    type="button"
+                                    onClick={() => handleCalendarChange(cal.id)}
+                                    className={`
+                                        flex items-center gap-2 px-3.5 py-2 rounded-full border shrink-0 transition-all duration-300
+                                        ${isSelected 
+                                            ? 'shadow-md scale-105' 
+                                            : 'border-gray-100 dark:border-gray-800 bg-white/50 dark:bg-gray-800/30 text-gray-500 dark:text-gray-400 hover:bg-white dark:hover:bg-gray-800'}
+                                    `}
+                                    style={{
+                                        borderColor: isSelected ? cal.color : undefined,
+                                        backgroundColor: isSelected ? `${cal.color}15` : undefined,
+                                        color: isSelected ? cal.color : undefined
+                                    }}
                                 >
-                                    {calendars.map(cal => (
-                                        <option key={cal.id} value={cal.id}>{cal.label}</option>
-                                    ))}
-                                </select>
-                                <div className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-2 pointer-events-none">
-                                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: calendars.find(c => c.id === calendarId)?.color }}></div>
-                                    <ChevronDown size={14} className="text-gray-400" />
-                                </div>
-                             </div>
+                                    <div 
+                                        className="w-2.5 h-2.5 rounded-full shrink-0" 
+                                        style={{ backgroundColor: cal.color }}
+                                    ></div>
+                                    <span className="text-xs font-bold truncate">{cal.label}</span>
+                                    {isSelected && <Check size={12} strokeWidth={4} />}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Section: Metadata (Location & Description) */}
+                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-2xl p-4 space-y-4 border border-gray-100 dark:border-gray-700/50">
+                    {type === 'event' && (
+                        <div className="flex items-start gap-3">
+                            <div className="w-8 h-8 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-orange-500 shrink-0">
+                                <MapPin size={16} />
+                            </div>
+                            <div className="flex-1 relative" ref={locationWrapperRef}>
+                                <input 
+                                    type="text" 
+                                    placeholder="Añadir ubicación"
+                                    value={location}
+                                    onChange={(e) => { setLocation(e.target.value); setShowLocationSuggestions(true); }}
+                                    onFocus={() => setShowLocationSuggestions(true)}
+                                    className="w-full bg-transparent text-gray-800 dark:text-white text-sm font-medium outline-none py-1.5 placeholder-gray-400"
+                                />
+                                {showLocationSuggestions && location.length > 0 && filteredLocations.length > 0 && (
+                                    <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 z-50 overflow-hidden max-h-40 overflow-y-auto">
+                                        {filteredLocations.map(loc => (
+                                            <button key={loc} type="button" onClick={() => { setLocation(loc); setShowLocationSuggestions(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 border-b border-gray-50 dark:border-gray-700 last:border-0">
+                                                <MapPin size={14} className="text-gray-400" /> {loc}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
-
-                    {type === 'event' && (
-                        <>
-                            <div className="w-full h-px bg-gray-200 dark:bg-gray-700/50"></div>
-                            <div className="flex items-start gap-3">
-                                <div className="w-8 h-8 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-orange-500 shrink-0">
-                                    <MapPin size={16} />
-                                </div>
-                                <div className="flex-1 relative" ref={locationWrapperRef}>
-                                    <input 
-                                        type="text" 
-                                        placeholder="Añadir ubicación"
-                                        value={location}
-                                        onChange={(e) => { setLocation(e.target.value); setShowLocationSuggestions(true); }}
-                                        onFocus={() => setShowLocationSuggestions(true)}
-                                        className="w-full bg-transparent text-gray-800 dark:text-white text-sm font-medium outline-none py-1.5 placeholder-gray-400"
-                                    />
-                                    {showLocationSuggestions && location.length > 0 && filteredLocations.length > 0 && (
-                                        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 z-50 overflow-hidden max-h-40 overflow-y-auto">
-                                            {filteredLocations.map(loc => (
-                                                <button key={loc} type="button" onClick={() => { setLocation(loc); setShowLocationSuggestions(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2 border-b border-gray-50 dark:border-gray-700 last:border-0">
-                                                    <MapPin size={14} className="text-gray-400" /> {loc}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </>
-                    )}
                     
-                    <div className="w-full h-px bg-gray-200 dark:bg-gray-700/50"></div>
+                    {type === 'event' && <div className="w-full h-px bg-gray-200 dark:bg-gray-700/50"></div>}
 
                     <div className="flex items-start gap-3">
                         <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-gray-500 shrink-0">

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Menu, ChevronLeft, ChevronRight, Search, Settings, Sun, Moon, Monitor, BookOpen, CheckSquare, Calendar as CalendarIcon, Plus, ChevronDown, Grid3x3, Columns, LayoutList, Check, X, Filter } from 'lucide-react';
+import { Menu, ChevronLeft, ChevronRight, Search, Settings, Sun, Moon, Monitor, BookOpen, CheckSquare, Calendar as CalendarIcon, Plus, ChevronDown, Grid3x3, Columns, LayoutList, Check, X, Filter, User, LogOut } from 'lucide-react';
 import { format, endOfMonth, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths } from 'date-fns';
 import startOfMonth from 'date-fns/startOfWeek';
 import startOfWeek from 'date-fns/startOfWeek';
@@ -27,6 +27,7 @@ interface HeaderProps {
   isTaskPanelOpen: boolean;
   onCreateClick: () => void;
   calendars?: CalendarConfig[];
+  onOpenSettings?: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({ 
@@ -49,16 +50,18 @@ const Header: React.FC<HeaderProps> = ({
   onToggleTaskPanel,
   isTaskPanelOpen,
   onCreateClick,
-  calendars = []
+  calendars = [],
+  onOpenSettings
 }) => {
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
-  const [activeMenu, setActiveMenu] = useState<'help' | 'settings' | 'view' | null>(null);
+  const [activeMenu, setActiveMenu] = useState<'help' | 'settings' | 'view' | 'profile' | null>(null);
   const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
   const [pickerDate, setPickerDate] = useState(currentDate);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const helpRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
   
   // Refs separados para Mobile y Desktop para evitar conflictos de "Click Outside"
   const viewMenuRefDesktop = useRef<HTMLDivElement>(null);
@@ -96,6 +99,11 @@ const Header: React.FC<HeaderProps> = ({
       if (settingsRef.current && !settingsRef.current.contains(target)) {
         if (activeMenu === 'settings') setActiveMenu(null);
       }
+
+      // Profile Menu
+      if (profileMenuRef.current && !profileMenuRef.current.contains(target)) {
+        if (activeMenu === 'profile') setActiveMenu(null);
+      }
       
       // View Menu - Check both Desktop and Mobile refs
       const clickedInsideViewDesktop = viewMenuRefDesktop.current && viewMenuRefDesktop.current.contains(target);
@@ -127,7 +135,7 @@ const Header: React.FC<HeaderProps> = ({
     setIsSearchExpanded(false);
   };
 
-  const toggleMenu = (menu: 'help' | 'settings' | 'view') => {
+  const toggleMenu = (menu: 'help' | 'settings' | 'view' | 'profile') => {
     setActiveMenu(activeMenu === menu ? null : menu);
   };
 
@@ -475,10 +483,65 @@ const Header: React.FC<HeaderProps> = ({
                 )}
             </div>
             
-            <div className="ml-1">
-               <button className="w-9 h-9 rounded-full bg-gradient-to-tr from-orange-400 to-pink-500 shadow-md border-2 border-white dark:border-gray-800 flex items-center justify-center text-white font-bold text-sm">
+            <div className="ml-1 relative" ref={profileMenuRef}>
+               <button 
+                  onClick={() => toggleMenu('profile')}
+                  className="w-9 h-9 rounded-full bg-gradient-to-tr from-orange-400 to-pink-500 shadow-md border-2 border-white dark:border-gray-800 flex items-center justify-center text-white font-bold text-sm transition-transform active:scale-90"
+               >
                   J
                </button>
+
+               {activeMenu === 'profile' && (
+                  <div className="absolute right-0 mt-4 w-60 bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 z-50 animate-pop-over origin-top-right p-2">
+                      <div className="p-3 mb-1 flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-orange-400 to-pink-500 flex items-center justify-center text-white font-bold text-lg">J</div>
+                          <div className="overflow-hidden">
+                              <p className="text-sm font-bold text-gray-900 dark:text-white truncate">Usuario Demo</p>
+                              <p className="text-xs text-gray-500 truncate">usuario@ejemplo.com</p>
+                          </div>
+                      </div>
+                      
+                      <div className="h-px bg-gray-100 dark:bg-gray-800 my-1"></div>
+
+                      <div className="p-2">
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 px-1">APARIENCIA</p>
+                        <div className="flex bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
+                            {['light', 'dark', 'system'].map((t) => (
+                                <button 
+                                    key={t}
+                                    onClick={() => onThemeChange(t as Theme)} 
+                                    className={`flex-1 flex justify-center py-1.5 rounded-lg transition-all ${theme === t ? 'bg-white dark:bg-gray-700 shadow text-blue-600' : 'text-gray-400'}`}
+                                >
+                                    {t === 'light' && <Sun size={14} />}
+                                    {t === 'dark' && <Moon size={14} />}
+                                    {t === 'system' && <Monitor size={14} />}
+                                </button>
+                            ))}
+                        </div>
+                      </div>
+
+                      <div className="h-px bg-gray-100 dark:bg-gray-800 my-1"></div>
+
+                      <div className="space-y-1">
+                          {onOpenSettings && (
+                              <button 
+                                onClick={() => { onOpenSettings(); toggleMenu('profile'); }}
+                                className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors font-medium"
+                              >
+                                  <Settings size={16} className="text-gray-500" />
+                                  Configuración
+                              </button>
+                          )}
+                          <button 
+                            onClick={() => { onShowInstructions(); toggleMenu('profile'); }}
+                            className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors font-medium"
+                          >
+                              <BookOpen size={16} className="text-gray-500" />
+                              Ayuda
+                          </button>
+                      </div>
+                  </div>
+               )}
             </div>
           </div>
       </div>

@@ -1,4 +1,6 @@
-const CACHE_NAME = 'familyplan-v2'; // Bump version
+// FAMILY PLAN SERVICE WORKER - VERSION 7.0 (FORCE UPDATE)
+// TIMESTAMP: 2024-05-22-URGENT-FIX-V7
+const CACHE_NAME = 'familyplan-v7-force-update';
 const urlsToCache = [
   './',
   './index.html',
@@ -6,27 +8,23 @@ const urlsToCache = [
 ];
 
 self.addEventListener('install', (event) => {
+  // Force new SW to enter waiting phase immediately
+  // self.skipWaiting(); // We keep this commented out to allow the user to confirm via UI
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
         return cache.addAll(urlsToCache);
       })
   );
-  // Force the waiting service worker to become the active service worker.
-  self.skipWaiting(); 
 });
 
 self.addEventListener('fetch', (event) => {
-  // Strategy: Network First, falling back to Cache
-  // This ensures the user always gets the latest version if online.
-  
-  // Only handle GET requests
   if (event.request.method !== 'GET') return;
 
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {
-        // If valid network response, clone it and update cache
+        // Update cache with new version if network succeeds
         if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
             const responseToCache = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => {
@@ -36,7 +34,7 @@ self.addEventListener('fetch', (event) => {
         return networkResponse;
       })
       .catch(() => {
-        // Network failed, try cache
+        // Fallback to cache if offline
         return caches.match(event.request);
       })
   );
@@ -49,17 +47,18 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheWhitelist.indexOf(cacheName) === -1) {
+            // Delete old caches immediately
             return caches.delete(cacheName);
           }
         })
       );
     }).then(() => {
+      // Take control of all clients immediately
       return self.clients.claim();
     })
   );
 });
 
-// Listen for the message to skip waiting
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
