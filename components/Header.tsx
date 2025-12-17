@@ -220,11 +220,11 @@ const Header: React.FC<HeaderProps> = ({
   // RENDER FOR MOBILE (Updated "Two Pills" Design)
   // -------------------------
   const renderMobileHeader = () => (
-      <header className="w-full px-4 pt-4 pb-2 flex items-start justify-between z-30 shrink-0 md:hidden relative">
+      <header className="w-full px-4 pt-[calc(env(safe-area-inset-top,0px)+1rem)] pb-2 flex items-start justify-between z-30 shrink-0 md:hidden relative">
           
           {/* SEARCH OVERLAY (Mobile Only) */}
           {isSearchExpanded && (
-              <div className="absolute inset-0 z-50 px-4 pt-4 pb-2 bg-white/95 dark:bg-black/95 backdrop-blur-xl flex items-center gap-3 animate-fade-in-up h-[72px]">
+              <div className="absolute inset-0 z-50 px-4 pt-[calc(env(safe-area-inset-top,0px)+1rem)] pb-2 bg-white/95 dark:bg-black/95 backdrop-blur-xl flex items-center gap-3 animate-fade-in-up min-h-[calc(env(safe-area-inset-top,0px)+72px)]">
                   <div className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center px-3 h-10">
                       <Search size={18} className="text-gray-400" />
                       <input 
