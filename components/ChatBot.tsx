@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Send, X, Paperclip, Image as ImageIcon, Video, Mic, 
   Minimize2, Maximize2, StopCircle, CalendarCheck, Trash2, 
-  CheckCircle2, Volume2, Loader2, Sparkles, User as UserIcon, Bot, MapPin, Clock, CalendarDays, XCircle, AlertTriangle, ArrowUp, Zap
+  CheckCircle2, Volume2, Loader2, Sparkles, User as UserIcon, Bot, MapPin, Clock, CalendarDays, XCircle, AlertTriangle, ArrowUp, Zap, Check
 } from 'lucide-react';
 import { format, addMinutes, subDays, addDays, isWithinInterval, isValid, startOfISOWeek, endOfISOWeek } from 'date-fns';
 import parseISO from 'date-fns/parseISO';
@@ -37,50 +37,6 @@ interface Message {
   limitReached?: boolean;
 }
 
-const Typewriter: React.FC<{ text: string; speed?: number; onComplete?: () => void }> = ({ text, speed = 10, onComplete }) => {
-  const [displayedText, setDisplayedText] = useState('');
-  const [isComplete, setIsComplete] = useState(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  
-  useEffect(() => {
-    setDisplayedText(''); 
-    setIsComplete(false);
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    let i = 0;
-    if (text.length > 500) {
-        setDisplayedText(text);
-        setIsComplete(true);
-        if (onComplete) onComplete();
-        return;
-    }
-    const startDelay = setTimeout(() => {
-        intervalRef.current = setInterval(() => {
-          if (i < text.length) {
-            setDisplayedText(text.slice(0, i + 1));
-            i++;
-          } else {
-            if (intervalRef.current) clearInterval(intervalRef.current);
-            setIsComplete(true);
-            if (onComplete) onComplete();
-          }
-        }, speed);
-    }, 300);
-    return () => {
-        clearTimeout(startDelay);
-        if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [text, speed, onComplete]);
-
-  return (
-    <div className="relative">
-      <ReactMarkdown>{displayedText}</ReactMarkdown>
-      {!isComplete && (
-        <span className="inline-block w-1.5 h-4 bg-current ml-0.5 align-middle animate-pulse rounded-full opacity-50"></span>
-      )}
-    </div>
-  );
-};
-
 const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = [], currentUser, onOpenPricing }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
@@ -88,7 +44,6 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
   const [attachment, setAttachment] = useState<{ type: 'image' | 'video', data: string, mimeType: string } | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
 
@@ -215,6 +170,23 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
     }
   };
 
+  const handleConfirmDraft = async (msg: Message) => {
+    // 1. Ejecutar la acción de agendar
+    onAddEvent(msg.eventDraft);
+    
+    // 2. Marcar como confirmado localmente para cambiar el UI inmediatamente
+    setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, actionTaken: 'confirmed' } : m));
+    
+    // 3. Opcional: Agregar un mensaje de éxito de la IA para cerrar el flujo
+    setTimeout(() => {
+        appendMessage({
+            id: Date.now().toString() + '_success',
+            role: 'model',
+            text: `¡Listo! He agendado **${msg.eventDraft.title}** para ti.`
+        });
+    }, 400);
+  };
+
   const renderMessageContent = (msg: Message, index: number) => {
     if (msg.limitReached) {
         return (
@@ -232,19 +204,44 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
     }
 
     if (msg.eventDraft) {
+        // SI YA ESTÁ CONFIRMADO: Mostrar versión compacta de "Agendado"
+        if (msg.actionTaken === 'confirmed') {
+            return (
+                <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-[20px] border border-green-100 dark:border-green-800/50 flex items-center gap-3 animate-fade-in shadow-sm">
+                    <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white shrink-0 shadow-lg shadow-green-500/30">
+                        <Check size={16} strokeWidth={4} />
+                    </div>
+                    <div className="min-w-0">
+                        <p className="text-xs font-bold text-green-800 dark:text-green-300">Evento agendado</p>
+                        <p className="text-[10px] text-green-600 dark:text-green-500 truncate w-40">{msg.eventDraft.title}</p>
+                    </div>
+                </div>
+            );
+        }
+
+        // SI NO ESTÁ CONFIRMADO: Mostrar borrador interactivo
         return (
             <div className="bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-gray-100 dark:border-zinc-800 shadow-xl w-72 animate-scale-in">
                 <div className="flex justify-between items-start mb-3">
                    <span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Borrador IA</span>
-                   <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                   <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
                 </div>
                 <h4 className="font-bold text-gray-900 dark:text-white truncate">{msg.eventDraft.title}</h4>
                 <p className="text-[11px] text-gray-500 mt-1 capitalize">{format(msg.eventDraft.start, "EEEE d MMMM, h:mm a", { locale: es })}</p>
                 <div className="flex gap-2 mt-4">
-                    <button onClick={() => setMessages(p => p.filter(m => m.id !== msg.id))} className="flex-1 py-2 text-xs font-bold bg-gray-100 dark:bg-zinc-800 rounded-lg">No</button>
-                    <button onClick={() => { onAddEvent(msg.eventDraft); setMessages(p => p.map(m => m.id === msg.id ? {...m, actionTaken: 'confirmed'} : m)); }} className="flex-1 py-2 text-xs font-bold bg-blue-600 text-white rounded-lg">Agendar</button>
+                    <button 
+                        onClick={() => setMessages(p => p.filter(m => m.id !== msg.id))} 
+                        className="flex-1 py-2 text-xs font-bold bg-gray-100 dark:bg-zinc-800 rounded-lg hover:bg-gray-200 transition-colors"
+                    >
+                        No
+                    </button>
+                    <button 
+                        onClick={() => handleConfirmDraft(msg)} 
+                        className="flex-1 py-2 text-xs font-bold bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-md active:scale-95 transition-all"
+                    >
+                        Agendar
+                    </button>
                 </div>
-                {msg.actionTaken === 'confirmed' && <div className="absolute inset-0 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-sm flex items-center justify-center rounded-2xl"><CheckCircle2 className="text-green-500" size={32} /></div>}
             </div>
         );
     }
@@ -259,10 +256,13 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
 
   return (
     <>
-      <button onClick={() => setIsOpen(true)} className="fixed bottom-6 right-7 z-50 w-14 h-14 rounded-full shadow-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 flex items-center justify-center hover:scale-110 active:scale-95 transition-all group overflow-hidden">
+      <button 
+        onClick={() => setIsOpen(true)} 
+        className="fixed bottom-6 right-6 z-50 w-16 h-16 rounded-2xl shadow-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 flex items-center justify-center hover:scale-110 active:scale-95 transition-all group overflow-hidden"
+      >
         <div className="absolute inset-0 bg-gradient-to-tr from-blue-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-        <img src={BOT_AVATAR_URL} className="w-8 h-8 object-contain" alt="IA" />
-        {isLimitReached && <div className="absolute -top-1 -right-1 w-5 h-5 bg-orange-500 rounded-full flex items-center justify-center text-[8px] text-white font-black border-2 border-white dark:border-zinc-900">!</div>}
+        <img src={BOT_AVATAR_URL} className="w-8 h-8 object-contain relative z-10" alt="IA" />
+        {isLimitReached && <div className="absolute -top-1 -right-1 w-5 h-5 bg-orange-500 rounded-full flex items-center justify-center text-[8px] text-white font-black border-2 border-white dark:border-zinc-900 z-20">!</div>}
       </button>
 
       {isOpen && (
@@ -280,7 +280,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
                     </div>
                  </div>
               </div>
-              <button onClick={() => setIsOpen(false)} className="p-2 bg-gray-50 dark:bg-zinc-800 rounded-full text-gray-500"><X size={18} /></button>
+              <button onClick={() => setIsOpen(false)} className="p-2 bg-gray-50 dark:bg-zinc-800 rounded-full text-gray-500 hover:bg-gray-100 transition-colors"><X size={18} /></button>
            </div>
 
            <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-white dark:bg-black">
