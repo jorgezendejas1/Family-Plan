@@ -1,453 +1,198 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Plus, ChevronLeft, ChevronRight, LayoutList, Calendar as CalendarIcon, Grid3x3, Columns, Settings, Edit2, Sun, Moon, Monitor, ChevronDown, CalendarPlus, ArrowDownAZ, Palette, ListFilter, Eye, EyeOff, Plug, LogOut, Check, Download, X, Cake, CheckSquare, GripVertical, BookOpen } from 'lucide-react';
-import { format, endOfWeek, eachDayOfInterval, endOfMonth, isSameDay, isSameMonth, addMonths } from 'date-fns';
-import startOfWeek from 'date-fns/startOfWeek';
-import startOfMonth from 'date-fns/startOfMonth';
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { Plus, ChevronLeft, ChevronRight, X, Check, Trash2, Mail, LogOut, RefreshCw, Smartphone as SmartphoneIcon, Settings, HelpCircle, ShieldCheck, AlertCircle, Users, Zap } from 'lucide-react';
+import { format, endOfWeek, eachDayOfInterval, endOfMonth, isSameDay, addMonths, startOfMonth, startOfWeek } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ViewType, CalendarConfig, Theme } from '../types';
+import { ViewType, CalendarConfig, Theme, User } from '../types';
+import { googleCalendarService, GoogleAccount } from '../services/googleCalendarService';
 
 interface SidebarProps {
   isOpen: boolean;
   currentDate: Date;
   onDateSelect: (date: Date) => void;
   onCreateClick: () => void;
-  onCreateBirthday?: () => void;
-  onCreateTask?: () => void;
   currentView: ViewType;
   onViewChange: (view: ViewType) => void;
   calendars: CalendarConfig[];
   onToggleCalendar: (id: string) => void;
-  onToggleAllCalendars: (visible: boolean) => void;
-  onEditCalendar: (calendar: CalendarConfig) => void;
-  onAddCalendar: () => void;
-  onReorderCalendars?: (fromIndex: number, toIndex: number) => void;
-  notificationPermission: NotificationPermission;
-  onRequestNotifications: () => void;
   theme: Theme;
   onThemeChange: (theme: Theme) => void;
-  isGoogleConnected?: boolean;
-  onConnectGoogle?: () => void;
-  onDisconnectGoogle?: () => void;
-  isGoogleLoading?: boolean;
-  onOpenTrash?: () => void;
-  onOpenSettings?: () => void;
-  onShowInstructions?: () => void;
-  deferredPrompt?: any;
-  onInstallPwa?: () => void;
   onClose?: () => void;
+  onOpenSettings?: () => void;
+  onOpenHelp?: () => void;
+  currentUser: User;
+  onLogout: () => void;
+  onOpenPricing: () => void;
 }
 
-type SortMode = 'default' | 'alpha' | 'color';
-
 const Sidebar: React.FC<SidebarProps> = ({ 
-  isOpen, 
-  currentDate, 
-  onDateSelect, 
-  onCreateClick,
-  onCreateTask,
-  currentView,
-  onViewChange,
-  calendars,
-  onToggleCalendar,
-  onToggleAllCalendars,
-  onEditCalendar,
-  onAddCalendar,
-  onReorderCalendars,
-  theme,
-  onThemeChange,
-  isGoogleConnected = false,
-  onConnectGoogle,
-  onDisconnectGoogle,
-  isGoogleLoading = false,
-  onOpenSettings,
-  onShowInstructions,
-  deferredPrompt,
-  onInstallPwa,
-  onClose
+  isOpen, currentDate, onDateSelect, calendars, onToggleCalendar, theme, onThemeChange, onClose, onOpenSettings, onOpenHelp, currentUser, onLogout, onOpenPricing, currentView, onViewChange
 }) => {
-  const [miniDate, setMiniDate] = React.useState(new Date());
-  const [isCreateMenuOpen, setIsCreateMenuOpen] = useState(false);
-  const [sortMode, setSortMode] = useState<SortMode>('default');
-  const createMenuRef = useRef<HTMLDivElement>(null);
-
-  const dragItem = useRef<number | null>(null);
-  const dragOverItem = useRef<number | null>(null);
-
-  // OPTIMIZATION: Memoize mini calendar days calculation to avoid heavy repetitive computation
-  const miniDays = useMemo(() => {
-      const miniMonthStart = startOfMonth(miniDate);
-      const miniMonthEnd = endOfMonth(miniDate);
-      const miniStartDate = startOfWeek(miniMonthStart, { locale: es });
-      const miniEndDate = endOfWeek(miniMonthEnd, { locale: es });
-      return eachDayOfInterval({ start: miniStartDate, end: miniEndDate });
-  }, [miniDate]);
-
-  const weekDays = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
-
-  const viewOptions: { value: ViewType; label: string; icon: React.ReactNode }[] = [
-    { value: 'agenda', label: 'Agenda', icon: <LayoutList size={18} /> },
-    { value: 'day', label: 'Día', icon: <CalendarIcon size={18} /> },
-    { value: 'week', label: 'Semana', icon: <Columns size={18} /> }, 
-    { value: 'month', label: 'Mes', icon: <Grid3x3 size={18} /> },
-  ];
-
-  const sortedCalendars = useMemo(() => {
-    const list = [...calendars];
-    if (sortMode === 'alpha') {
-      return list.sort((a, b) => a.label.localeCompare(b.label));
-    }
-    if (sortMode === 'color') {
-      return list.sort((a, b) => a.color.localeCompare(b.color));
-    }
-    return list;
-  }, [calendars, sortMode]);
-
-  const allVisible = calendars.length > 0 && calendars.every(c => c.visible);
+  const [miniDate, setMiniDate] = useState(new Date());
+  const [accounts, setAccounts] = useState<GoogleAccount[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (createMenuRef.current && !createMenuRef.current.contains(event.target as Node)) {
-        setIsCreateMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    setAccounts(googleCalendarService.getConnectedAccounts());
+    const interval = setInterval(() => {
+        setAccounts(googleCalendarService.getConnectedAccounts());
+    }, 5000);
+    return () => clearInterval(interval);
   }, []);
 
-  const handleSortClick = () => {
-    if (sortMode === 'default') setSortMode('alpha');
-    else if (sortMode === 'alpha') setSortMode('color');
-    else setSortMode('default');
-  };
-
-  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, position: number) => {
-    dragItem.current = position;
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>, position: number) => {
-    e.preventDefault();
-    dragOverItem.current = position;
-  };
-
-  const handleDragEnd = () => {
-    if (dragItem.current !== null && dragOverItem.current !== null && onReorderCalendars) {
-      if (dragItem.current !== dragOverItem.current) {
-         onReorderCalendars(dragItem.current, dragOverItem.current);
-      }
+  const handleAddAccount = async () => {
+    setIsSyncing(true);
+    try {
+      await googleCalendarService.addAccount();
+      setAccounts(googleCalendarService.getConnectedAccounts());
+    } finally {
+      setIsSyncing(false);
     }
-    dragItem.current = null;
-    dragOverItem.current = null;
   };
 
-  const renderContent = () => (
-      <>
-         {/* PREMIUM MINI CALENDAR */}
-         <div className="px-6 mb-8">
-            <div className="flex items-center justify-between mb-4">
-                <span className="text-sm font-bold text-gray-900 dark:text-white capitalize">
-                    {format(miniDate, 'MMMM yyyy', { locale: es })}
-                </span>
-                <div className="flex gap-1">
-                    <button onClick={() => setMiniDate(addMonths(miniDate, -1))} className="p-1 text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors"><ChevronLeft size={18} /></button>
-                    <button onClick={() => setMiniDate(addMonths(miniDate, 1))} className="p-1 text-gray-400 hover:text-gray-800 dark:hover:text-white transition-colors"><ChevronRight size={18} /></button>
-                </div>
-            </div>
-            
-            <div className="grid grid-cols-7 gap-y-3 mb-2">
-                {weekDays.map(day => (
-                    <div key={day} className="text-[10px] text-center text-gray-400 dark:text-gray-500 font-bold">
-                        {day}
-                    </div>
-                ))}
-            </div>
-            <div className="grid grid-cols-7 gap-y-1 justify-items-center">
-                {miniDays.map(day => {
-                    const isCurrentMonth = isSameMonth(day, miniDate);
-                    const isSelected = isSameDay(day, currentDate);
-                    const isToday = isSameDay(day, new Date());
-                    
-                    return (
-                        <button
-                            key={day.toString()}
-                            onClick={() => {
-                                onDateSelect(day);
-                                setMiniDate(day);
-                            }}
-                            className={`
-                                h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium transition-all duration-200 relative
-                                ${!isCurrentMonth ? 'text-gray-300 dark:text-gray-700' : 'text-gray-700 dark:text-gray-300'}
-                                ${isSelected 
-                                    ? 'bg-black dark:bg-white text-white dark:text-black font-bold shadow-md' 
-                                    : 'hover:bg-gray-100 dark:hover:bg-gray-800'}
-                                ${isToday && !isSelected ? 'text-blue-600 dark:text-blue-400 font-bold' : ''}
-                            `}
-                        >
-                            {format(day, 'd')}
-                        </button>
-                    );
-                })}
-            </div>
-          </div>
-
-          <div className="md:flex-1 px-4 py-2 mt-2">
-              <div className="flex items-center justify-between mb-3 px-2">
-                  <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Mis Calendarios</span>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={handleSortClick} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-md transition-colors">
-                         {sortMode === 'default' && <ListFilter size={14} />}
-                         {sortMode === 'alpha' && <ArrowDownAZ size={14} />}
-                         {sortMode === 'color' && <Palette size={14} />}
-                      </button>
-                      <button onClick={() => onToggleAllCalendars(!allVisible)} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-md transition-colors">
-                         {allVisible ? <EyeOff size={14} /> : <Eye size={14} />}
-                      </button>
-                      <button onClick={onAddCalendar} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-md transition-colors">
-                        <Plus size={14} />
-                      </button>
-                  </div>
-              </div>
-              
-              <div className="space-y-0.5 bg-gray-50 dark:bg-gray-800/40 rounded-2xl p-2">
-                  {sortedCalendars.map((cal, index) => (
-                      <div 
-                        key={cal.id} 
-                        className="group flex items-center justify-between py-2 px-3 hover:bg-white dark:hover:bg-gray-700/50 rounded-xl transition-all cursor-pointer"
-                        draggable={sortMode === 'default'}
-                        onDragStart={(e) => handleDragStart(e, index)}
-                        onDragEnter={(e) => handleDragEnter(e, index)}
-                        onDragEnd={handleDragEnd}
-                        onDragOver={(e) => e.preventDefault()}
-                      >
-                          <div className="flex items-center flex-1 min-w-0">
-                            {sortMode === 'default' && (
-                                <div className="mr-2 text-gray-300 opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing hover:text-gray-500 transition-opacity">
-                                    <GripVertical size={12} />
-                                </div>
-                            )}
-
-                            <label className="flex items-center space-x-3 cursor-pointer flex-1 min-w-0">
-                                    <div className="relative flex items-center justify-center">
-                                        <input 
-                                            type="checkbox" 
-                                            checked={cal.visible}
-                                            onChange={() => onToggleCalendar(cal.id)}
-                                            className="sr-only" 
-                                        />
-                                        <div 
-                                            className={`
-                                                w-5 h-5 rounded-full border-2 transition-all duration-200 flex items-center justify-center
-                                                ${cal.visible ? 'scale-100 border-transparent' : 'scale-90 opacity-60 border-gray-300 dark:border-gray-600 bg-transparent'}
-                                            `}
-                                            style={{ 
-                                                backgroundColor: cal.visible ? cal.color : 'transparent',
-                                            }}
-                                        >
-                                            {cal.visible && <Check size={12} className="text-white" strokeWidth={3} />}
-                                        </div>
-                                    </div>
-                                    
-                                    <span className={`text-sm font-medium truncate flex-1 flex items-center gap-2 transition-colors ${cal.visible ? 'text-gray-700 dark:text-gray-200' : 'text-gray-400'}`}>
-                                        {cal.label}
-                                        {cal.isRemote && <span className="text-[9px] font-bold text-blue-600 bg-blue-100 dark:bg-blue-900/50 px-1.5 py-0.5 rounded-md">G</span>}
-                                        {cal.label === 'Cumpleaños' && <Cake size={14} className="text-pink-500 shrink-0" />}
-                                        {cal.label === 'Tareas' && <CheckSquare size={14} className="text-indigo-500 shrink-0" />}
-                                    </span>
-                            </label>
-                          </div>
-                          
-                          <button 
-                              onClick={(e) => {
-                                  e.stopPropagation();
-                                  onEditCalendar(cal);
-                              }}
-                              className="opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-full transition-all"
-                          >
-                              <Edit2 size={12} />
-                          </button>
-                      </div>
-                  ))}
-              </div>
-
-              {onConnectGoogle && (
-                <div className="mt-6 px-2">
-                     <span className="block text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-2">Conexiones</span>
-                     {isGoogleConnected ? (
-                         <div className="bg-white dark:bg-gray-800 rounded-xl p-3 border border-gray-100 dark:border-gray-700 shadow-sm flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                                <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">Google Calendar</span>
-                            </div>
-                            <button onClick={onDisconnectGoogle} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 p-1.5 rounded-lg transition-colors">
-                                <LogOut size={14} />
-                            </button>
-                         </div>
-                     ) : (
-                        <button 
-                            onClick={onConnectGoogle}
-                            disabled={isGoogleLoading}
-                            className="w-full flex items-center justify-center gap-2 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-white dark:hover:bg-gray-700 transition-all text-xs font-bold text-gray-600 dark:text-gray-300"
-                        >
-                            {isGoogleLoading ? <span className="animate-spin">⌛</span> : <Plug size={14} />}
-                            <span>Conectar Google</span>
-                        </button>
-                     )}
-                </div>
-              )}
-              
-              {deferredPrompt && onInstallPwa && (
-                  <div className="mt-4 px-2">
-                      <button onClick={onInstallPwa} className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl transition-all font-bold text-xs hover:bg-blue-100">
-                          <Download size={14} />
-                          Instalar App
-                      </button>
-                  </div>
-              )}
-          </div>
-
-          <div className="px-6 pb-6 pt-2 mt-auto space-y-3">
-               {/* SETTINGS AND HELP BUTTONS */}
-               <div className="grid grid-cols-2 gap-3">
-                  <button 
-                    onClick={onOpenSettings} 
-                    className="flex items-center justify-center gap-2 py-2.5 bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-xl transition-colors text-xs font-bold text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700"
-                  >
-                      <Settings size={14} />
-                      Configuración
-                  </button>
-                  <button 
-                    onClick={onShowInstructions} 
-                    className="flex items-center justify-center gap-2 py-2.5 bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-xl transition-colors text-xs font-bold text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700"
-                  >
-                      <BookOpen size={14} />
-                      Ayuda
-                  </button>
-               </div>
-
-               {/* THEME SWITCHER */}
-               <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-800/50 p-1 rounded-full border border-gray-100 dark:border-gray-800">
-                  <button onClick={() => onThemeChange('light')} className={`p-2 rounded-full transition-all ${theme === 'light' ? 'bg-white dark:bg-gray-700 shadow-sm text-yellow-500' : 'text-gray-400'}`}><Sun size={16} /></button>
-                  <button onClick={() => onThemeChange('system')} className={`p-2 rounded-full transition-all ${theme === 'system' ? 'bg-white dark:bg-gray-700 shadow-sm text-blue-500' : 'text-gray-400'}`}><Monitor size={16} /></button>
-                  <button onClick={() => onThemeChange('dark')} className={`p-2 rounded-full transition-all ${theme === 'dark' ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-400' : 'text-gray-400'}`}><Moon size={16} /></button>
-               </div>
-          </div>
-      </>
-  );
+  const miniDays = useMemo(() => {
+      const monthStart = startOfMonth(miniDate);
+      const monthEnd = endOfMonth(miniDate);
+      const start = startOfWeek(monthStart, { locale: es });
+      const end = endOfWeek(monthEnd, { locale: es });
+      return eachDayOfInterval({ start, end });
+  }, [miniDate]);
 
   return (
-    <aside 
-      className={`
-        absolute top-2 bottom-4 left-4 z-50 w-80 bg-white/95 dark:bg-gray-900/95 backdrop-blur-3xl transform transition-transform duration-500 cubic-bezier(0.19, 1, 0.22, 1) border border-gray-100 dark:border-gray-800 shadow-2xl rounded-3xl
+    <>
+      {/* Elegante Backdrop Blur para móvil */}
+      <div 
+        className={`fixed inset-0 bg-black/10 dark:bg-black/40 backdrop-blur-[2px] z-[65] transition-opacity duration-500 lg:hidden ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        onClick={onClose}
+      ></div>
+
+      <aside className={`
+        fixed inset-y-2 left-4 z-[70] w-[85vw] max-w-[320px] bg-white/95 dark:bg-black/95 backdrop-blur-3xl border border-black/5 dark:border-white/10 shadow-2xl rounded-[32px] flex flex-col transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]
         ${isOpen ? 'translate-x-0' : '-translate-x-[120%]'}
-        lg:relative lg:top-0 lg:bottom-0 lg:left-0 lg:h-full lg:w-72 lg:rounded-[32px] lg:ml-3 lg:bg-white/80 lg:dark:bg-gray-900/80 lg:backdrop-blur-2xl lg:shadow-none lg:z-40 lg:border-r lg:border-t-0 lg:border-b-0 lg:border-l-0 lg:translate-x-0
-        flex flex-col
-      `}
-    >
-      {/* MOBILE STRUCTURE: HEADER + SCROLLABLE CONTENT */}
-      <div className="md:hidden flex flex-col w-full h-full relative">
-         {/* Sidebar Header (Simplified for floating panel) */}
-         <div className="px-6 py-5 flex items-center justify-between border-b border-gray-100 dark:border-gray-800">
-            <h1 className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">Menú</h1>
-            {onClose && (
-                <button 
-                  type="button"
-                  onClick={onClose}
-                  className="p-2 -mr-2 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors active:bg-gray-200 dark:active:bg-gray-700 cursor-pointer"
-                >
-                    <X size={20} />
-                </button>
-            )}
-         </div>
-
-         {/* Scrollable Content */}
-         <div className="flex-1 overflow-y-auto overflow-x-hidden pt-2 safe-area-pb">
-            <div className="px-4 mb-6 mt-2">
-                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-2xl p-2 space-y-1">
-                    {viewOptions.map((option) => (
-                        <button
-                            key={option.value}
-                            onClick={() => { onViewChange(option.value); if(onClose) onClose(); }}
-                            className={`
-                                w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all
-                                ${currentView === option.value 
-                                    ? 'bg-white dark:bg-gray-700 text-black dark:text-white shadow-sm' 
-                                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'}
-                            `}
-                        >
-                            <span className={currentView === option.value ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'}>
-                                {option.icon}
-                            </span>
-                            <span>{option.label}</span>
-                        </button>
-                    ))}
-                </div>
-            </div>
-            
-            {renderContent()}
-            <div className="h-4 w-full md:hidden"></div>
-         </div>
-      </div>
-
-      <div className="hidden md:flex flex-col h-full overflow-y-auto custom-scrollbar pt-6">
-          {/* Tablet Overlay Header (Visible only when sidebar is an overlay, i.e., < lg) */}
-          <div className="lg:hidden flex justify-between items-center px-6 mb-6">
-             <h2 className="text-xl font-bold text-gray-900 dark:text-white">Menú</h2>
-             {onClose && (
-                <button 
-                  type="button"
-                  onClick={onClose}
-                  className="p-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full text-gray-500 transition-colors cursor-pointer"
-                >
-                    <X size={20} />
-                </button>
-             )}
-          </div>
-
-          {/* PREMIUM CREATE BUTTON */}
-          <div className="relative mb-8 px-6 flex-shrink-0" ref={createMenuRef}>
-            <button 
-              onClick={() => setIsCreateMenuOpen(!isCreateMenuOpen)}
-              className="w-full group flex items-center justify-between pl-5 pr-4 py-3.5 bg-gray-900 dark:bg-white text-white dark:text-black rounded-2xl shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transition-all duration-300"
-            >
-              <div className="flex items-center gap-3">
-                  <Plus className="w-5 h-5" strokeWidth={3} />
-                  <span className="font-bold text-sm tracking-wide">Nuevo</span>
-              </div>
-              <ChevronDown size={16} className={`transition-transform duration-300 opacity-60 ${isCreateMenuOpen ? 'rotate-180' : ''}`} />
-            </button>
-
-            {isCreateMenuOpen && (
-              <div className="absolute top-full left-6 right-6 mt-3 bg-white/90 dark:bg-gray-800/90 backdrop-blur-xl rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden z-50 animate-scale-in origin-top">
-                <button 
-                  onClick={() => { onCreateClick(); setIsCreateMenuOpen(false); }}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                >
-                  <CalendarPlus size={18} className="text-blue-500" />
-                  Evento
-                </button>
-                {onCreateTask && (
-                   <button 
-                      onClick={() => { onCreateTask(); setIsCreateMenuOpen(false); }}
-                      className="w-full flex items-center gap-3 px-4 py-3.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors border-t border-gray-100 dark:border-gray-700"
-                    >
-                      <CheckSquare size={18} className="text-indigo-500" />
-                      Tarea
-                    </button>
-                )}
-                <button 
-                  onClick={() => { onAddCalendar(); setIsCreateMenuOpen(false); }}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors border-t border-gray-100 dark:border-gray-700"
-                >
-                  <Settings size={18} className="text-gray-400" />
-                  Calendario
-                </button>
-              </div>
-            )}
-          </div>
+        mt-[calc(env(safe-area-inset-top,0px)+72px)] lg:mt-0
+        lg:static lg:translate-x-0 lg:w-72 lg:h-full lg:shadow-none lg:bg-white/80 lg:dark:bg-black/80 lg:z-40 overflow-hidden shrink-0 transition-none
+      `}>
+        <div className="flex-1 flex flex-col p-6 overflow-y-auto custom-scrollbar">
           
-          {renderContent()}
-      </div>
-    </aside>
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-black dark:bg-white rounded-lg flex items-center justify-center">
+                <SmartphoneIcon size={18} className="text-white dark:text-black" />
+              </div>
+              <h1 className="text-xl font-bold dark:text-white">Family Plan</h1>
+            </div>
+            {/* Botón de cierre visible en móvil para redundancia */}
+            <button onClick={onClose} className="lg:hidden p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors active:scale-90"><X size={20} /></button>
+          </div>
+
+          {/* Plan SaaS Status */}
+          <div 
+            onClick={onOpenPricing}
+            className="mb-6 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-4 text-white shadow-xl hover:scale-[1.02] active:scale-95 transition-all cursor-pointer group relative overflow-hidden"
+          >
+            <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 blur-2xl rounded-full"></div>
+            <div className="flex justify-between items-start mb-1">
+              <span className="text-[10px] font-bold uppercase tracking-widest opacity-80">Plan Actual</span>
+              <Zap size={14} className="group-hover:animate-pulse" />
+            </div>
+            <p className="text-lg font-bold capitalize">{currentUser.plan === 'unlimited' ? 'Ilimitado' : currentUser.plan}</p>
+            <p className="text-[10px] opacity-70 mt-1">Pulsa para ver beneficios premium</p>
+          </div>
+
+          {/* Master Admin Section */}
+          {currentUser.role === 'master' && (
+            <div className="mb-8">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1 mb-3 block">Administración</span>
+                <button 
+                  onClick={() => onViewChange('users')}
+                  className={`w-full flex items-center gap-3 px-3 py-3 rounded-2xl transition-all ${currentView === 'users' ? 'bg-black dark:bg-white text-white dark:text-black font-bold' : 'hover:bg-gray-100 dark:hover:bg-zinc-800 dark:text-gray-300'}`}
+                >
+                  <Users size={18} />
+                  <span className="text-sm">Gestión SaaS</span>
+                </button>
+            </div>
+          )}
+
+          {/* Mini Calendar */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4 px-1">
+              <span className="text-sm font-bold capitalize dark:text-white">{format(miniDate, 'MMMM yyyy', { locale: es })}</span>
+              <div className="flex gap-1">
+                <button onClick={() => setMiniDate(addMonths(miniDate, -1))} className="p-1 text-gray-400"><ChevronLeft size={18} /></button>
+                <button onClick={() => setMiniDate(addMonths(miniDate, 1))} className="p-1 text-gray-400"><ChevronRight size={18} /></button>
+              </div>
+            </div>
+            <div className="grid grid-cols-7 gap-y-1">
+              {['D','L','M','M','J','V','S'].map(d => <div key={d} className="text-[10px] text-center font-bold text-gray-400">{d}</div>)}
+              {miniDays.map(day => (
+                <button 
+                  key={day.toString()}
+                  onClick={() => onDateSelect(day)}
+                  className={`h-8 w-8 rounded-xl text-xs flex items-center justify-center transition-all ${isSameDay(day, currentDate) ? 'bg-black dark:bg-white text-white dark:text-black font-bold' : 'dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
+                >
+                  {format(day, 'd')}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Main Calendars */}
+          <div className="mb-8">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1 mb-3 block">Calendarios</span>
+            <div className="space-y-1 bg-gray-50/50 dark:bg-zinc-900/50 rounded-2xl p-2">
+                {calendars.map(cal => (
+                  <div key={cal.id} className="flex items-center gap-3 px-3 py-2 hover:bg-white dark:hover:bg-zinc-800 rounded-xl transition-all cursor-pointer" onClick={() => onToggleCalendar(cal.id)}>
+                    <div 
+                      className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all ${cal.visible ? 'border-transparent' : 'border-gray-300 dark:border-gray-600'}`} 
+                      style={{ backgroundColor: cal.visible ? cal.color : 'transparent' }}
+                    >
+                      {cal.visible && <Check size={12} className="text-white" strokeWidth={3} />}
+                    </div>
+                    <span className={`text-sm font-medium truncate ${cal.visible ? 'dark:text-gray-200' : 'text-gray-400'}`}>{cal.label}</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-auto p-6 border-t border-gray-100 dark:border-zinc-800 flex flex-col gap-1 bg-white/50 dark:bg-black/50 backdrop-blur-md">
+          {/* User Session Info */}
+          <div className="mb-4 bg-gray-50 dark:bg-zinc-900 rounded-2xl p-3 flex items-center justify-between">
+              <div className="flex items-center gap-3 overflow-hidden">
+                <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white font-bold shrink-0">{currentUser.name[0]}</div>
+                <div className="min-w-0">
+                    <p className="text-[11px] font-bold dark:text-white truncate">{currentUser.name}</p>
+                    <p className="text-[9px] text-gray-400 truncate">{currentUser.email}</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onLogout(); }} 
+                className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all active:scale-90"
+                title="Cerrar sesión"
+              >
+                <LogOut size={16} />
+              </button>
+          </div>
+
+          <div className="flex items-center justify-between mb-2">
+              <button onClick={onOpenSettings} className="flex items-center gap-3 px-3 py-2.5 text-xs font-bold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-xl transition-all flex-1 text-left">
+                  <Settings size={16} className="text-gray-400" />Configuración
+              </button>
+              <button onClick={onOpenHelp} className="p-2.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-xl transition-all"><HelpCircle size={18} /></button>
+          </div>
+
+          <button 
+              onClick={handleAddAccount}
+              className="w-full flex items-center justify-center gap-2 py-3.5 bg-black dark:bg-white text-white dark:text-black rounded-2xl text-[13px] font-bold hover:scale-[1.02] active:scale-95 transition-all shadow-xl border border-white/10 relative overflow-hidden group"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+              <Plus size={18} strokeWidth={3} />
+              <span>Google Calendar</span>
+            </button>
+        </div>
+      </aside>
+    </>
   );
 };
 
