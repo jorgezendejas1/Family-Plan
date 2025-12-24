@@ -1,7 +1,6 @@
+
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { format, addDays, isSameDay, differenceInMinutes, isSameWeek } from 'date-fns';
-import startOfWeek from 'date-fns/startOfWeek';
-import startOfDay from 'date-fns/startOfDay';
+import { format, addDays, isSameDay, differenceInMinutes, isSameWeek, startOfWeek, startOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ViewProps, CalendarEvent } from '../types';
 import { TIME_ZONES } from '../constants';
@@ -18,6 +17,7 @@ interface PositionedEvent extends CalendarEvent {
 }
 
 const WeekView: React.FC<ViewProps> = ({ currentDate, events, calendars, onEventClick, onTimeSlotClick, timeZoneConfig, onToggleTaskCompletion }) => {
+  // Using startOfWeek as a named import
   const startOfCurrentWeek = startOfWeek(currentDate, { locale: es });
   const weekDays = Array.from({ length: 7 }).map((_, i) => addDays(startOfCurrentWeek, i));
   const hours = Array.from({ length: 24 }).map((_, i) => i);
@@ -207,6 +207,7 @@ const WeekView: React.FC<ViewProps> = ({ currentDate, events, calendars, onEvent
                                 className="flex-1 relative h-full cursor-pointer hover:bg-gray-50/30 dark:hover:bg-gray-800/30"
                                 style={{ marginTop: hasSecondaryTZ ? '24px' : '0' }}
                                 onClick={(e) => {
+                                    // Using startOfDay as a named import
                                     onTimeSlotClick && onTimeSlotClick(addDays(startOfDay(day), 0)); 
                                 }}
                             >

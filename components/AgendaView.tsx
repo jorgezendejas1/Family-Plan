@@ -1,6 +1,6 @@
+
 import React, { useMemo, useEffect, useState, useRef } from 'react';
-import { format, isToday, isTomorrow, isBefore, addDays, isSameDay, parse } from 'date-fns';
-import startOfDay from 'date-fns/startOfDay';
+import { format, isToday, isTomorrow, isBefore, addDays, isSameDay, parse, startOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { CalendarEvent, ViewProps } from '../types';
 import { CalendarDays, Check, Cake } from 'lucide-react';
@@ -21,6 +21,7 @@ const AgendaView: React.FC<ViewProps> = ({ currentDate, events, calendars, onEve
     
     relevantEvents.sort((a, b) => a.start.getTime() - b.start.getTime());
 
+    // Using startOfDay as a named import
     const startOfCurrent = startOfDay(currentDate);
     const next7DaysEnd = addDays(startOfCurrent, 7);
     const hasEventsInNext7Days = relevantEvents.some(e => 

@@ -1,9 +1,9 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Clock, AlignLeft, Calendar as CalendarIcon, Trash2, Bell, Plus, ChevronDown, Cake, MapPin, CheckCircle2, Star, AlertTriangle, Repeat, Tag, Check } from 'lucide-react';
+import { X, Clock, AlignLeft, Calendar as CalendarIcon, Trash2, Bell, Plus, ChevronDown, Cake, MapPin, CheckCircle2, Star, AlertTriangle, Repeat, Tag, Check, Users } from 'lucide-react';
 import { CalendarEvent, RecurrenceType, CalendarConfig } from '../types';
 import { EVENT_COLORS, REMINDER_OPTIONS, MOCK_LOCATIONS } from '../constants';
-import { format, isValid, addDays, isBefore } from 'date-fns';
-import parse from 'date-fns/parse';
+import { format, isValid, addDays, isBefore, parse } from 'date-fns';
 
 export type DeleteMode = 'this' | 'following' | 'all';
 
@@ -257,7 +257,7 @@ const EventModal: React.FC<EventModalProps> = ({
                         <button onClick={() => handleDelete('all')} className="w-full py-3 px-6 text-center text-red-500 font-medium active:bg-red-50 dark:active:bg-red-900/20 rounded-xl transition-colors">Todos los eventos</button>
                      </div>
                      <div className="p-2 border-t border-gray-200/50 dark:border-gray-700/50">
-                        <button onClick={() => setShowDeleteConfirm(false)} className="w-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-white rounded-xl py-3 font-bold active:scale-95 transition-transform">Cancelar</button>
+                        <button onClick={() => { setRecurrenceWarning(null); setShowDeleteConfirm(false); }} className="w-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-white rounded-xl py-3 font-bold active:scale-95 transition-transform">Cancelar</button>
                      </div>
                   </div>
                 ) : (
@@ -267,7 +267,7 @@ const EventModal: React.FC<EventModalProps> = ({
                       </div>
                       <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">¿Eliminar {type === 'task' ? 'tarea' : 'evento'}?</h3>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mb-8 leading-relaxed">
-                        Esta acción moverá el elemento a la papelera.
+                        Esta acción moverá el elemento a la papelera familiar.
                       </p>
                       <div className="flex gap-3 justify-center">
                           <button onClick={() => setShowDeleteConfirm(false)} className="flex-1 py-3 text-sm font-bold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 rounded-xl active:scale-95 transition-transform">Cancelar</button>
@@ -296,7 +296,7 @@ const EventModal: React.FC<EventModalProps> = ({
                 </button>
             )}
              <button onClick={handleSubmit} className="px-5 py-2 bg-black dark:bg-white text-white dark:text-black rounded-full text-sm font-bold shadow-lg active:scale-95 transition-transform">
-                {existingEvent ? 'Actualizar' : 'Añadir'}
+                {existingEvent ? 'Actualizar' : 'Agendar'}
              </button>
           </div>
         </div>
@@ -329,7 +329,7 @@ const EventModal: React.FC<EventModalProps> = ({
 
                  <input 
                     type="text" 
-                    placeholder={type === 'task' ? "Título de la tarea" : (isBirthday ? "Cumpleaños de..." : "Título del evento")}
+                    placeholder={type === 'task' ? "Título de la tarea familiar" : (isBirthday ? "Cumpleaños de..." : "Título del evento")}
                     className="w-full text-3xl font-bold bg-transparent border-none p-0 outline-none text-gray-900 dark:text-white placeholder-gray-300 dark:placeholder-gray-600"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
@@ -339,7 +339,6 @@ const EventModal: React.FC<EventModalProps> = ({
 
             <div className="space-y-4">
                 
-                {/* Section: Main Details (Date & Time) */}
                 <div className="bg-gray-50 dark:bg-gray-800/50 rounded-2xl p-4 space-y-4 border border-gray-100 dark:border-gray-700/50">
                     <div className="flex items-center justify-between">
                          <div className="flex items-center gap-3">
@@ -350,7 +349,7 @@ const EventModal: React.FC<EventModalProps> = ({
                          </div>
                          <div 
                              onClick={() => setIsBirthday(!isBirthday)}
-                             className={`w-12 h-7 rounded-full p-1 transition-colors cursor-pointer ${isBirthday ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                             className={`w-12 h-7 rounded-full p-1 transition-colors cursor-pointer ${isBirthday ? 'bg-ios-blue' : 'bg-gray-300 dark:bg-gray-600'}`}
                          >
                              <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform ${isBirthday ? 'translate-x-5' : 'translate-x-0'}`}></div>
                          </div>
@@ -413,9 +412,10 @@ const EventModal: React.FC<EventModalProps> = ({
                     )}
                 </div>
 
-                {/* NEW INTEGRATED CALENDAR SELECTOR (Pill style) */}
                 <div className="py-2 animate-fade-in-up">
-                    <p className="text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3 px-1">Selección de Calendario</p>
+                    <p className="text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mb-3 px-1 flex items-center gap-2">
+                       <Users size={12} /> ¿Para quién es este evento?
+                    </p>
                     <div className="flex gap-2 overflow-x-auto custom-scrollbar pb-2 -mx-1 px-1">
                         {calendars.map((cal) => {
                             const isSelected = calendarId === cal.id;
@@ -448,7 +448,6 @@ const EventModal: React.FC<EventModalProps> = ({
                     </div>
                 </div>
 
-                {/* Section: Metadata (Location & Description) */}
                 <div className="bg-gray-50 dark:bg-gray-800/50 rounded-2xl p-4 space-y-4 border border-gray-100 dark:border-gray-700/50">
                     {type === 'event' && (
                         <div className="flex items-start gap-3">
@@ -458,7 +457,7 @@ const EventModal: React.FC<EventModalProps> = ({
                             <div className="flex-1 relative" ref={locationWrapperRef}>
                                 <input 
                                     type="text" 
-                                    placeholder="Añadir ubicación"
+                                    placeholder="Lugar familiar"
                                     value={location}
                                     onChange={(e) => { setLocation(e.target.value); setShowLocationSuggestions(true); }}
                                     onFocus={() => setShowLocationSuggestions(true)}
@@ -484,7 +483,7 @@ const EventModal: React.FC<EventModalProps> = ({
                             <AlignLeft size={16} />
                         </div>
                         <textarea 
-                            placeholder="Notas o descripción"
+                            placeholder="Notas familiares o descripción..."
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                             rows={2}
@@ -493,7 +492,6 @@ const EventModal: React.FC<EventModalProps> = ({
                     </div>
                 </div>
 
-                {/* Notifications */}
                 {type === 'event' && (
                     <div className="bg-gray-50 dark:bg-gray-800/50 rounded-2xl p-4 border border-gray-100 dark:border-gray-700/50">
                         <div className="flex flex-col gap-3">
@@ -514,7 +512,7 @@ const EventModal: React.FC<EventModalProps> = ({
                                 <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
                                     <Plus size={16} />
                                 </div>
-                                <span>Añadir alerta</span>
+                                <span>Añadir alerta familiar</span>
                             </button>
                         </div>
                     </div>

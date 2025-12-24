@@ -1,9 +1,9 @@
 
-import { CalendarEvent } from '../types';
+import { CalendarEvent, CalendarConfig } from '../types';
 
 /**
  * SERVICIO DE GOOGLE CALENDAR PREMIUM
- * Este servicio maneja múltiples flujos de OAuth y sincronización en segundo plano.
+ * Maneja sincronización bidireccional para múltiples miembros de la familia.
  */
 
 const CLIENT_ID = process.env.VITE_GOOGLE_CLIENT_ID || '';
@@ -26,15 +26,11 @@ export const googleCalendarService = {
     return data ? JSON.parse(data) : [];
   },
 
-  /**
-   * Inicia el flujo de Google Identity Services para agregar una cuenta adicional.
-   */
   addAccount: async (): Promise<GoogleAccount> => {
     return new Promise((resolve, reject) => {
       try {
         if (!(window as any).google?.accounts?.oauth2) {
           console.error("GSI library not loaded");
-          // Fallback para desarrollo si no hay API cargada
           return resolve(googleCalendarService.createMockAccount());
         }
 
@@ -44,7 +40,6 @@ export const googleCalendarService = {
           callback: async (resp: any) => {
             if (resp.error) return reject(resp);
 
-            // Obtener info del perfil
             const userInfoResp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
               headers: { Authorization: `Bearer ${resp.access_token}` }
             });
@@ -78,9 +73,9 @@ export const googleCalendarService = {
 
   createMockAccount: (): GoogleAccount => {
     const mock: GoogleAccount = {
-      email: `premium_${Math.floor(Math.random()*99)}@gmail.com`,
-      name: 'Google User',
-      photoUrl: `https://ui-avatars.com/api/?name=Premium+User&background=007AFF&color=fff`,
+      email: `family_${Math.floor(Math.random()*99)}@gmail.com`,
+      name: 'Google Family User',
+      photoUrl: `https://ui-avatars.com/api/?name=F+U&background=007AFF&color=fff`,
       accessToken: 'mock_' + Date.now(),
       expiresAt: Date.now() + 3600000,
       lastSync: new Date().toISOString(),
@@ -92,27 +87,26 @@ export const googleCalendarService = {
     return mock;
   },
 
-  fetchAllRemoteEvents: async (): Promise<CalendarEvent[]> => {
+  /**
+   * Sincroniza eventos de Google hacia la App (Pull)
+   * Solo para los miembros que tienen una cuenta vinculada.
+   */
+  fetchAllMappedEvents: async (calendars: CalendarConfig[]): Promise<CalendarEvent[]> => {
     const accounts = googleCalendarService.getConnectedAccounts();
+    const mappedEmails = calendars.filter(c => c.googleAccountEmail).map(c => c.googleAccountEmail);
     const allEvents: CalendarEvent[] = [];
 
     for (const acc of accounts) {
+      if (!mappedEmails.includes(acc.email)) continue;
       if (acc.accessToken.startsWith('mock_')) continue;
 
       try {
-        // Marcamos como sincronizando en la UI
-        acc.status = 'syncing';
-        
         const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?access_token=${acc.accessToken}`);
-        
-        if (response.status === 401) {
-          acc.status = 'expired';
-          continue;
-        }
-
         if (!response.ok) continue;
         
         const data = await response.json();
+        const targetCal = calendars.find(c => c.googleAccountEmail === acc.email);
+        
         const mapped = data.items.map((item: any) => ({
           id: `g_${item.id}`,
           remoteId: item.id,
@@ -121,34 +115,29 @@ export const googleCalendarService = {
           end: new Date(item.end.dateTime || item.end.date),
           description: item.description,
           location: item.location,
-          color: '#4285F4', 
-          calendarId: `google_${acc.email}`,
+          color: targetCal?.color || '#4285F4', 
+          calendarId: targetCal?.id || 'default',
           isRemote: true,
           accountId: acc.email
         }));
         
         allEvents.push(...mapped);
-        acc.status = 'active';
-        acc.lastSync = new Date().toISOString();
       } catch (e) {
-        acc.status = 'expired';
+        console.error("Sync error for", acc.email);
       }
     }
-    localStorage.setItem('google_accounts', JSON.stringify(accounts));
     return allEvents;
   },
 
-  // Fix: Added missing pushEvent method to synchronize local events to Google Calendar
   /**
-   * Pushes a local event to Google Calendar API.
-   * If the event has a remoteId, it performs an update (PUT).
-   * Otherwise, it creates a new event (POST).
+   * Envía un evento de la App hacia Google Calendar (Push - 2 Way)
    */
-  pushEvent: async (event: CalendarEvent): Promise<void> => {
+  pushEventToGoogle: async (event: CalendarEvent, calendars: CalendarConfig[]): Promise<void> => {
+    const targetCal = calendars.find(c => c.id === event.calendarId);
+    if (!targetCal || !targetCal.googleAccountEmail) return;
+
     const accounts = googleCalendarService.getConnectedAccounts();
-    // Extract email from calendarId (format: google_email@example.com)
-    const email = event.calendarId.replace('google_', '');
-    const acc = accounts.find(a => a.email === email);
+    const acc = accounts.find(a => a.email === targetCal.googleAccountEmail);
     
     if (!acc || acc.accessToken.startsWith('mock_')) return;
 
@@ -167,17 +156,13 @@ export const googleCalendarService = {
       
       const method = event.remoteId ? 'PUT' : 'POST';
 
-      const response = await fetch(url, {
+      await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(gEvent)
       });
-
-      if (!response.ok) {
-        console.error("Failed to push event to Google Calendar", await response.text());
-      }
     } catch (e) {
-      console.error("Error pushing event to Google Calendar:", e);
+      console.error("Error pushing to Google:", e);
     }
   },
 

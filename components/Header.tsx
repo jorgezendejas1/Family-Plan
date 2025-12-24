@@ -1,11 +1,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Menu, ChevronLeft, ChevronRight, Search, Settings, Sun, Moon, Monitor, BookOpen, CheckSquare, Calendar as CalendarIcon, Plus, ChevronDown, Grid3x3, Columns, LayoutList, Check, X, Filter, User, LogOut } from 'lucide-react';
-import { format, endOfMonth, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths } from 'date-fns';
-import startOfMonth from 'date-fns/startOfWeek';
-import startOfWeek from 'date-fns/startOfWeek';
+import { format, endOfMonth, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, addMonths, startOfMonth, startOfWeek } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ViewType, SearchCriteria, Theme, CalendarConfig, CalendarEvent } from '../types';
+import { ViewType, SearchCriteria, Theme, CalendarConfig, CalendarEvent, User as UserType } from '../types';
 
 interface HeaderProps {
   currentDate: Date;
@@ -30,6 +28,8 @@ interface HeaderProps {
   onCreateClick: () => void;
   calendars?: CalendarConfig[];
   onOpenSettings?: () => void;
+  currentUser?: UserType;
+  onLogout?: () => void;
 }
 
 const Header: React.FC<HeaderProps> = ({ 
@@ -54,7 +54,9 @@ const Header: React.FC<HeaderProps> = ({
   isTaskPanelOpen,
   onCreateClick,
   calendars = [],
-  onOpenSettings
+  onOpenSettings,
+  currentUser,
+  onLogout
 }) => {
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [activeMenu, setActiveMenu] = useState<'help' | 'settings' | 'view' | 'profile' | null>(null);
@@ -273,14 +275,29 @@ const Header: React.FC<HeaderProps> = ({
                 )}
             </div>
             <div className="ml-1 relative" ref={profileMenuRef}>
-               <button onClick={() => toggleMenu('profile')} className="w-9 h-9 rounded-full bg-gradient-to-tr from-orange-400 to-pink-500 shadow-md border-2 border-white dark:border-gray-800 flex items-center justify-center text-white font-bold text-sm transition-transform active:scale-90">J</button>
+               <button onClick={() => toggleMenu('profile')} className="w-9 h-9 rounded-full bg-gradient-to-tr from-orange-400 to-pink-500 shadow-md border-2 border-white dark:border-gray-800 flex items-center justify-center text-white font-bold text-sm transition-transform active:scale-90 uppercase">
+                  {currentUser?.name?.[0] || 'J'}
+               </button>
                {activeMenu === 'profile' && (
                   <div className="absolute right-0 mt-4 w-60 bg-white/95 dark:bg-gray-900/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 z-50 animate-pop-over origin-top-right p-2">
-                      <div className="p-3 mb-1 flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-gradient-to-tr from-orange-400 to-pink-500 flex items-center justify-center text-white font-bold text-lg">J</div><div className="overflow-hidden"><p className="text-sm font-bold text-gray-900 dark:text-white truncate">Usuario Demo</p><p className="text-xs text-gray-500 truncate">usuario@ejemplo.com</p></div></div>
+                      <div className="p-3 mb-1 flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-orange-400 to-pink-500 flex items-center justify-center text-white font-bold text-lg uppercase">
+                          {currentUser?.name?.[0] || 'J'}
+                        </div>
+                        <div className="overflow-hidden">
+                          <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{currentUser?.name || 'Usuario Demo'}</p>
+                          <p className="text-xs text-gray-500 truncate">{currentUser?.email || 'usuario@ejemplo.com'}</p>
+                        </div>
+                      </div>
                       <div className="h-px bg-gray-100 dark:bg-gray-800 my-1"></div>
                       <div className="space-y-1">
                           {onOpenSettings && <button onClick={() => { onOpenSettings(); toggleMenu('profile'); }} className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors font-medium"><Settings size={16} className="text-gray-500" />Configuración</button>}
                           <button onClick={() => { onShowInstructions(); toggleMenu('profile'); }} className="w-full flex items-center gap-3 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors font-medium"><BookOpen size={16} className="text-gray-500" />Ayuda</button>
+                          {onLogout && (
+                            <button onClick={() => { onLogout(); toggleMenu('profile'); }} className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors font-bold mt-1 border-t border-gray-100 dark:border-gray-800 pt-2">
+                                <LogOut size={16} className="text-red-500" />Cerrar sesión
+                            </button>
+                          )}
                       </div>
                   </div>
                )}

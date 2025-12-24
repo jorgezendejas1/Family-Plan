@@ -1,3 +1,4 @@
+
 import { 
   format, 
   endOfWeek, 
@@ -13,17 +14,19 @@ import {
   differenceInMinutes,
   addMinutes,
   differenceInWeeks,
-  differenceInMonths
+  differenceInMonths,
+  startOfWeek,
+  startOfMonth
 } from 'date-fns';
-import startOfWeek from 'date-fns/startOfWeek';
-import startOfMonth from 'date-fns/startOfMonth';
 import { es } from 'date-fns/locale';
 import { CalendarEvent, RecurrenceType } from '../types';
 
 // Helper to use Spanish locale globally for calendar generation
 export const getMonthDays = (currentDate: Date) => {
+  // Using startOfMonth as a named import
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
+  // Using startOfWeek as a named import
   const startDate = startOfWeek(monthStart, { locale: es });
   const endDate = endOfWeek(monthEnd, { locale: es });
   
@@ -34,6 +37,7 @@ export const getMonthDays = (currentDate: Date) => {
 };
 
 export const getWeekDays = (currentDate: Date) => {
+  // Using startOfWeek as a named import
   const start = startOfWeek(currentDate, { locale: es });
   const end = endOfWeek(currentDate, { locale: es });
   return eachDayOfInterval({ start, end });

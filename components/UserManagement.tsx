@@ -1,10 +1,21 @@
 
-import React from 'react';
-import { User, Shield, Zap, CreditCard, User as UserIcon, MoreVertical } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Shield, Zap, User as UserIcon, MoreVertical, Loader2 } from 'lucide-react';
 import { authService } from '../services/authService';
+import { User } from '../types';
 
 const UserManagement: React.FC = () => {
-  const users = authService.getAllUsers();
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+        const data = await authService.getAllUsers();
+        setUsers(data);
+        setLoading(false);
+    };
+    load();
+  }, []);
 
   const getPlanBadge = (plan: string) => {
     switch(plan) {
@@ -19,10 +30,16 @@ const UserManagement: React.FC = () => {
     <div className="h-full flex flex-col bg-white dark:bg-zinc-950 p-6">
       <div className="mb-8">
         <h2 className="text-2xl font-bold dark:text-white tracking-tight">Gestión de Usuarios</h2>
-        <p className="text-gray-500 text-sm mt-1">Panel administrativo Master para control de planes SaaS</p>
+        <p className="text-gray-500 text-sm mt-1">Panel administrativo Cloud para control de planes SaaS</p>
       </div>
 
-      <div className="flex-1 overflow-hidden border border-gray-100 dark:border-zinc-800 rounded-[32px]">
+      <div className="flex-1 overflow-hidden border border-gray-100 dark:border-zinc-800 rounded-[32px] relative">
+        {loading ? (
+            <div className="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-black/50 backdrop-blur-sm z-20">
+                <Loader2 className="animate-spin text-blue-500" size={32} />
+            </div>
+        ) : null}
+        
         <div className="overflow-x-auto h-full custom-scrollbar">
           <table className="w-full text-left border-collapse">
             <thead className="sticky top-0 bg-gray-50 dark:bg-zinc-900 z-10 border-b border-gray-100 dark:border-zinc-800">

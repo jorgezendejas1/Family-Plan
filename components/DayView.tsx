@@ -1,6 +1,6 @@
+
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { format, differenceInMinutes, isSameDay } from 'date-fns';
-import startOfDay from 'date-fns/startOfDay';
+import { format, differenceInMinutes, isSameDay, startOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ViewProps, CalendarEvent } from '../types';
 import { TIME_ZONES } from '../constants';
@@ -158,6 +158,7 @@ const DayView: React.FC<ViewProps> = ({ currentDate, events, calendars, onEventC
 
             <div 
                 className="flex-1 relative cursor-pointer"
+                // Using startOfDay as a named import
                 onClick={() => onTimeSlotClick && onTimeSlotClick(startOfDay(currentDate))}
             >
                 <div className="absolute inset-0 flex flex-col pointer-events-none">

@@ -1,17 +1,15 @@
 
 import { supabase } from './supabaseClient';
-import { CalendarEvent, CalendarConfig, Theme, TimeZoneConfig } from '../types';
-import { DEFAULT_CALENDARS } from '../constants';
-import { isValid } from 'date-fns';
-import parseISO from 'date-fns/parseISO';
+import { CalendarEvent, CalendarConfig, Theme, TimeZoneConfig, PlanType } from '../types';
+import { PLAN_CALENDARS, DEFAULT_CALENDARS } from '../constants';
+import { isValid, parseISO } from 'date-fns';
 import { authService } from './authService';
+import { cryptoService } from '../utils/cryptoUtils';
 
-// --- HELPERS ---
-const isSupabaseConfigured = () => !!supabase;
-
-const getActiveUserId = () => {
+const getActiveUserId = () => authService.getCurrentUser()?.id || null;
+const getEncryptionSecret = () => {
     const user = authService.getCurrentUser();
-    return user ? user.id : 'guest';
+    return user ? user.email + "_fp_secure_v2" : "global_fallback_v2";
 };
 
 const safeDate = (input: any, fallback: Date = new Date()): Date => {
@@ -21,198 +19,174 @@ const safeDate = (input: any, fallback: Date = new Date()): Date => {
     const parsed = parseISO(input);
     return isValid(parsed) ? parsed : fallback;
   }
-  const fromNum = new Date(input);
-  return isValid(fromNum) ? fromNum : fallback;
+  return fallback;
 };
 
-const mapEventFromDB = (dbEvent: any): CalendarEvent => ({
-  ...dbEvent,
-  start: safeDate(dbEvent.start_date),
-  end: safeDate(dbEvent.end_date),
-  calendarId: dbEvent.calendar_id,
-  isBirthday: dbEvent.is_birthday,
-  isTask: dbEvent.is_task,
-  isCompleted: dbEvent.is_completed,
-  isImportant: dbEvent.is_important, 
-  category: dbEvent.category,
-  reminderMinutes: dbEvent.reminder_minutes,
-  deletedAt: dbEvent.deleted_at ? safeDate(dbEvent.deleted_at) : undefined,
-  recurrenceEnds: dbEvent.recurrence_ends ? safeDate(dbEvent.recurrence_ends) : undefined,
-  createdByBot: dbEvent.created_by_bot
-});
-
-const mapEventToDB = (event: CalendarEvent, userId: string) => {
+const mapEventFromDB = async (dbEvent: any): Promise<CalendarEvent> => {
+  const secret = getEncryptionSecret();
   return {
-    id: event.id,
-    user_id: userId,
-    title: event.title || '(Sin título)',
-    description: event.description,
-    start_date: safeDate(event.start).toISOString(),
-    end_date: safeDate(event.end).toISOString(),
-    color: event.color,
-    location: event.location,
-    calendar_id: event.calendarId,
-    recurrence: event.recurrence,
-    is_birthday: event.isBirthday,
-    is_task: event.isTask,
-    is_completed: event.isCompleted,
-    is_important: event.isImportant,
-    category: event.category,
-    reminder_minutes: event.reminderMinutes,
-    deleted_at: event.deletedAt ? safeDate(event.deletedAt).toISOString() : null,
-    recurrence_ends: event.recurrenceEnds ? safeDate(event.recurrenceEnds).toISOString() : null,
-    created_by_bot: event.createdByBot
+    ...dbEvent,
+    title: await cryptoService.decrypt(dbEvent.title, secret),
+    description: dbEvent.description ? await cryptoService.decrypt(dbEvent.description, secret) : undefined,
+    location: dbEvent.location ? await cryptoService.decrypt(dbEvent.location, secret) : undefined,
+    start: safeDate(dbEvent.start_date),
+    end: safeDate(dbEvent.end_date),
+    calendarId: dbEvent.calendar_id,
+    reminderMinutes: Array.isArray(dbEvent.reminder_minutes) ? dbEvent.reminder_minutes : []
   };
 };
 
-// Local Storage Helpers
-const getLocal = <T>(key: string, userId: string, fallback: T): T => {
-  if (typeof localStorage === 'undefined') return fallback;
-  const item = localStorage.getItem(`${key}_${userId}`);
-  if (!item) return fallback;
-  try {
-    return JSON.parse(item);
-  } catch {
-    return fallback;
-  }
+const mapEventToDB = async (event: CalendarEvent, userId: string) => {
+  const secret = getEncryptionSecret();
+  return {
+    id: event.id,
+    user_id: userId,
+    title: await cryptoService.encrypt(event.title || '(Sin título)', secret),
+    description: event.description ? await cryptoService.encrypt(event.description, secret) : null,
+    location: event.location ? await cryptoService.encrypt(event.location, secret) : null,
+    start_date: safeDate(event.start).toISOString(),
+    end_date: safeDate(event.end).toISOString(),
+    color: event.color,
+    calendar_id: event.calendarId,
+    recurrence: event.recurrence || 'none',
+    is_birthday: !!event.isBirthday,
+    is_task: !!event.isTask,
+    is_completed: !!event.isCompleted,
+    is_important: !!event.isImportant,
+    category: event.category || 'Otro',
+    reminder_minutes: event.reminderMinutes || [],
+    created_by_bot: !!event.createdByBot
+  };
 };
 
-const setLocal = (key: string, userId: string, data: any) => {
-  if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(`${key}_${userId}`, JSON.stringify(data));
-};
-
-export interface UserSettings {
-  user_id: string;
-  theme: Theme;
-  timezone_config: TimeZoneConfig;
-  has_seen_tour: boolean;
-  metadata: any;
-}
+// Singleton lock to prevent duplicate seeding during race conditions
+let seedingInProgress = false;
 
 export const dataService = {
-  
   getCalendars: async (): Promise<CalendarConfig[]> => {
-    const userId = getActiveUserId();
-    if (isSupabaseConfigured()) {
-      const { data, error } = await supabase!.from('calendars').select('*').eq('user_id', userId);
-      if (!error && data && data.length > 0) {
-        setLocal('fp_calendars', userId, data);
-        return data;
-      }
-      if (!data || data.length === 0) {
-        const seed = DEFAULT_CALENDARS.map(c => ({ ...c, user_id: userId }));
-        await supabase!.from('calendars').insert(seed);
-        return seed;
-      }
+    const user = authService.getCurrentUser();
+    if (!user || !supabase) return DEFAULT_CALENDARS;
+
+    const { data, error } = await supabase.from('calendars').select('*').eq('user_id', user.id);
+    
+    if (!error && data && data.length > 0) return data;
+    
+    // If seeding is already happening, wait for it instead of starting a new one
+    if (seedingInProgress) {
+        await new Promise(resolve => setTimeout(resolve, 800));
+        const retry = await supabase.from('calendars').select('*').eq('user_id', user.id);
+        if (retry.data && retry.data.length > 0) return retry.data;
     }
-    const local = getLocal<CalendarConfig[]>('fp_calendars', userId, []);
-    return local.length > 0 ? local : DEFAULT_CALENDARS;
+
+    seedingInProgress = true;
+    try {
+        // Re-check inside the lock
+        const finalCheck = await supabase.from('calendars').select('*').eq('user_id', user.id);
+        if (finalCheck.data && finalCheck.data.length > 0) return finalCheck.data;
+
+        // Lógica de Seeding por Plan
+        const planKey = (user.role === 'master' || user.role === 'family') ? 'pro' : user.plan;
+        const defaultSet = PLAN_CALENDARS[planKey as keyof typeof PLAN_CALENDARS] || PLAN_CALENDARS.free;
+        
+        const seed = defaultSet.map((c, idx) => ({ 
+          id: crypto.randomUUID(), 
+          user_id: user.id, 
+          label: c.label, 
+          color: c.color, 
+          visible: true 
+        }));
+
+        await supabase.from('calendars').insert(seed);
+        return seed;
+    } finally {
+        seedingInProgress = false;
+    }
   },
 
-  saveCalendar: async (calendar: CalendarConfig): Promise<CalendarConfig> => {
-    const userId = getActiveUserId();
-    const local = getLocal<CalendarConfig[]>('fp_calendars', userId, []);
-    const idx = local.findIndex(c => c.id === calendar.id);
-    if (idx >= 0) local[idx] = calendar; else local.push(calendar);
-    setLocal('fp_calendars', userId, local);
+  resetCalendarsToDefault: async (): Promise<CalendarConfig[]> => {
+    const user = authService.getCurrentUser();
+    if (!user || !supabase) return [];
 
-    if (isSupabaseConfigured()) {
-       await supabase!.from('calendars').upsert({ ...calendar, user_id: userId });
-    }
-    return calendar;
+    // 1. Borrar eventos y calendarios actuales del usuario
+    await supabase.from('events').delete().eq('user_id', user.id);
+    await supabase.from('calendars').delete().eq('user_id', user.id);
+
+    // 2. Volver a sembrar usando la lógica normal de getCalendars
+    // (Al no haber datos, getCalendars activará el seeding con los nuevos defaults)
+    return await dataService.getCalendars();
+  },
+
+  updateCalendar: async (id: string, updates: Partial<CalendarConfig>) => {
+    const userId = getActiveUserId();
+    if (!userId || !supabase) return;
+    await supabase.from('calendars').update(updates).eq('id', id).eq('user_id', userId);
+  },
+
+  deleteCalendar: async (id: string) => {
+    const userId = getActiveUserId();
+    if (!userId || !supabase) return;
+    // Eliminar calendario y sus eventos asociados (cascada lógica)
+    await supabase.from('events').delete().eq('calendar_id', id).eq('user_id', userId);
+    await supabase.from('calendars').delete().eq('id', id).eq('user_id', userId);
+  },
+
+  createCalendar: async (label: string, color: string): Promise<CalendarConfig | null> => {
+    const userId = getActiveUserId();
+    if (!userId || !supabase) return null;
+    const newCal = { id: crypto.randomUUID(), user_id: userId, label, color, visible: true };
+    const { data } = await supabase.from('calendars').insert(newCal).select().single();
+    return data;
   },
 
   getEvents: async (): Promise<CalendarEvent[]> => {
     const userId = getActiveUserId();
-    if (isSupabaseConfigured()) {
-      const { data, error } = await supabase!.from('events').select('*').eq('user_id', userId);
-      if (!error && data) {
-        const events = data.map(mapEventFromDB);
-        setLocal('fp_events', userId, events);
-        return events;
-      }
-    }
-    const local = getLocal<any[]>('fp_events', userId, []);
-    return local.map(e => ({
-        ...e,
-        start: safeDate(e.start),
-        end: safeDate(e.end),
-        deletedAt: e.deletedAt ? safeDate(e.deletedAt) : undefined,
-    }));
+    if (!userId || !supabase) return [];
+    const { data } = await supabase.from('events').select('*').eq('user_id', userId).is('deleted_at', null);
+    if (!data) return [];
+    return await Promise.all(data.map(mapEventFromDB));
   },
 
   createOrUpdateEvent: async (event: CalendarEvent): Promise<CalendarEvent> => {
     const userId = getActiveUserId();
-    const local = getLocal<CalendarEvent[]>('fp_events', userId, []);
-    const idx = local.findIndex(e => e.id === event.id);
-    if (idx >= 0) local[idx] = event; else local.push(event);
-    setLocal('fp_events', userId, local);
-
-    if (isSupabaseConfigured()) {
-      await supabase!.from('events').upsert(mapEventToDB(event, userId));
-    }
+    if (!userId || !supabase) return event;
+    const dbReadyEvent = await mapEventToDB(event, userId);
+    await supabase.from('events').upsert(dbReadyEvent);
     return event;
   },
 
   deleteEvent: async (id: string, permanent: boolean = false) => {
     const userId = getActiveUserId();
-    const local = getLocal<any[]>('fp_events', userId, []);
+    if (!userId || !supabase) return;
     if (permanent) {
-        setLocal('fp_events', userId, local.filter(e => e.id !== id));
-        if (isSupabaseConfigured()) await supabase!.from('events').delete().eq('id', id).eq('user_id', userId);
+      await supabase.from('events').delete().eq('id', id).eq('user_id', userId);
     } else {
-        const updated = local.map(e => e.id === id ? { ...e, deletedAt: new Date().toISOString() } : e);
-        setLocal('fp_events', userId, updated);
-        if (isSupabaseConfigured()) await supabase!.from('events').update({ deleted_at: new Date().toISOString() }).eq('id', id).eq('user_id', userId);
+      await supabase.from('events').update({ deleted_at: new Date().toISOString() }).eq('id', id).eq('user_id', userId);
     }
   },
 
-  getSettings: async (): Promise<UserSettings> => {
+  getSettings: async () => {
     const userId = getActiveUserId();
-    const defaultSettings: UserSettings = {
-       user_id: userId,
-       theme: 'system',
-       timezone_config: { primary: 'local', secondary: 'UTC', showSecondary: false },
-       has_seen_tour: false,
-       metadata: {}
-    };
-
-    if (isSupabaseConfigured()) {
-       const { data } = await supabase!.from('settings').select('*').eq('user_id', userId).single();
-       if (data) return data as UserSettings;
-    }
-    return getLocal<UserSettings>('fp_settings', userId, defaultSettings);
+    if (!userId || !supabase) return { theme: 'system', timezone_config: { primary: 'local', secondary: 'UTC', showSecondary: false }, has_seen_tour: false };
+    const { data } = await supabase.from('settings').select('*').eq('user_id', userId).single();
+    return data || { theme: 'system', timezone_config: { primary: 'local', secondary: 'UTC', showSecondary: false }, has_seen_tour: false };
   },
 
-  saveSettings: async (settings: Partial<UserSettings>) => {
+  saveSettings: async (settings: any) => {
     const userId = getActiveUserId();
-    const current = await dataService.getSettings();
-    const updated = { ...current, ...settings, user_id: userId };
-    setLocal('fp_settings', userId, updated);
-
-    if (isSupabaseConfigured()) {
-      await supabase!.from('settings').upsert(updated);
-    }
+    if (!userId || !supabase) return;
+    await supabase.from('settings').upsert({ ...settings, user_id: userId });
   },
 
   getChatHistory: async () => {
      const userId = getActiveUserId();
-     if (isSupabaseConfigured()) {
-        const { data } = await supabase!.from('chat_history').select('*').eq('user_id', userId).order('created_at', { ascending: true });
-        if (data) return data;
-     }
-     return getLocal<any[]>('fp_chat_history', userId, []);
+     const history = localStorage.getItem(`fp_chat_${userId}`);
+     return history ? JSON.parse(history) : [];
   },
 
   saveChatMessage: async (message: any) => {
      const userId = getActiveUserId();
-     const history = getLocal<any[]>('fp_chat_history', userId, []);
+     const history = await dataService.getChatHistory();
      history.push(message);
-     setLocal('fp_chat_history', userId, history);
-
-     if (isSupabaseConfigured()) {
-        await supabase!.from('chat_history').upsert({ ...message, user_id: userId, created_at: new Date().toISOString() });
-     }
+     localStorage.setItem(`fp_chat_${userId}`, JSON.stringify(history));
   }
 };

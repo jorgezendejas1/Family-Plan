@@ -6,7 +6,7 @@ export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
 export type Theme = 'light' | 'dark' | 'system';
 
 export type UserRole = 'master' | 'family' | 'standard' | 'free';
-export type PlanType = 'free' | 'basic' | 'pro' | 'unlimited';
+export type PlanType = 'free' | 'basic' | 'pro' | 'unlimited' | 'admin' | 'casa';
 
 export interface User {
   id: string;
@@ -24,6 +24,7 @@ export interface CalendarConfig {
   color: string;
   visible: boolean;
   isRemote?: boolean; 
+  googleAccountEmail?: string; // Nuevo: Vinculación con cuenta de Google
 }
 
 export interface CalendarEvent {
