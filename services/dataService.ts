@@ -59,81 +59,12 @@ const mapEventToDB = async (event: CalendarEvent, userId: string) => {
   };
 };
 
-let seedingInProgress = false;
-
 export const dataService = {
   getCalendars: async (): Promise<CalendarConfig[]> => {
     const user = authService.getCurrentUser();
     if (!user || !supabase) return DEFAULT_CALENDARS;
-
-    const { data, error } = await supabase.from('calendars').select('*').eq('user_id', user.id);
-    
-    if (!error && data && data.length > 0) {
-        return data;
-    }
-    
-    if (seedingInProgress) {
-        await new Promise(resolve => setTimeout(resolve, 800));
-        const retry = await supabase.from('calendars').select('*').eq('user_id', user.id);
-        if (retry.data && retry.data.length > 0) return retry.data;
-    }
-
-    seedingInProgress = true;
-    try {
-        const finalCheck = await supabase.from('calendars').select('*').eq('user_id', user.id);
-        if (finalCheck.data && finalCheck.data.length > 0) return finalCheck.data;
-
-        let planKey = user.plan;
-        if (user.role === 'master' || user.email === 'admin@familyplan.com') {
-            planKey = 'admin';
-        }
-        
-        const defaultSet = PLAN_CALENDARS[planKey as keyof typeof PLAN_CALENDARS] || PLAN_CALENDARS.free;
-        
-        const seed = defaultSet.map((c, idx) => ({ 
-          id: crypto.randomUUID(), 
-          user_id: user.id, 
-          label: c.label, 
-          color: c.color, 
-          visible: true 
-        }));
-
-        const { error: insertError } = await supabase.from('calendars').insert(seed);
-        if (insertError) throw insertError;
-        return seed;
-    } finally {
-        seedingInProgress = false;
-    }
-  },
-
-  resetCalendarsToDefault: async (): Promise<CalendarConfig[]> => {
-    const user = authService.getCurrentUser();
-    if (!user || !supabase) return [];
-
-    const { error: eventError } = await supabase.from('events').delete().eq('user_id', user.id);
-    if (eventError) console.error('Error eventos:', eventError);
-    
-    const { error: calError } = await supabase.from('calendars').delete().eq('user_id', user.id);
-    if (calError) console.error('Error cals:', calError);
-
-    let planKey = user.plan;
-    if (user.role === 'master' || user.email === 'admin@familyplan.com') {
-        planKey = 'admin';
-    }
-    
-    const defaultSet = PLAN_CALENDARS[planKey as keyof typeof PLAN_CALENDARS] || PLAN_CALENDARS.free;
-    const seed = defaultSet.map(c => ({ 
-      id: crypto.randomUUID(), 
-      user_id: user.id, 
-      label: c.label, 
-      color: c.color, 
-      visible: true 
-    }));
-
-    const { error: finalSeedError } = await supabase.from('calendars').insert(seed);
-    if (finalSeedError) throw finalSeedError;
-
-    return seed;
+    const { data } = await supabase.from('calendars').select('*').eq('user_id', user.id);
+    return data && data.length > 0 ? data : DEFAULT_CALENDARS;
   },
 
   updateCalendar: async (id: string, updates: Partial<CalendarConfig>) => {
@@ -173,14 +104,10 @@ export const dataService = {
     return event;
   },
 
-  deleteEvent: async (id: string, permanent: boolean = false) => {
+  deleteEvent: async (id: string) => {
     const userId = getActiveUserId();
     if (!userId || !supabase) return;
-    if (permanent) {
-      await supabase.from('events').delete().eq('id', id).eq('user_id', userId);
-    } else {
-      await supabase.from('events').update({ deleted_at: new Date().toISOString() }).eq('id', id).eq('user_id', userId);
-    }
+    await supabase.from('events').update({ deleted_at: new Date().toISOString() }).eq('id', id).eq('user_id', userId);
   },
 
   getSettings: async () => {
@@ -196,11 +123,10 @@ export const dataService = {
     await supabase.from('settings').upsert({ ...settings, user_id: userId });
   },
 
-  // --- FAMILY CHAT METHODS ---
+  // --- FAMILY CHAT (MODO SaaS) ---
   getFamilyMessages: async (): Promise<FamilyChatMessage[]> => {
     const userId = getActiveUserId();
     if (!userId || !supabase) return [];
-    // Nota: family_id en este MVP es el id del usuario master (mismo id para todos)
     const { data } = await supabase
       .from('family_messages')
       .select('*')
@@ -214,14 +140,13 @@ export const dataService = {
     const userId = getActiveUserId();
     if (!userId || !supabase) return;
     
-    // Check count for 200 limit (FIFO)
+    // Mantenimiento FIFO de 200 mensajes
     const { count } = await supabase
       .from('family_messages')
       .select('*', { count: 'exact', head: true })
       .eq('family_id', userId);
 
     if (count && count >= 200) {
-      // Get oldest message
       const { data: oldest } = await supabase
         .from('family_messages')
         .select('id')
@@ -229,10 +154,7 @@ export const dataService = {
         .order('created_at', { ascending: true })
         .limit(1)
         .single();
-      
-      if (oldest) {
-        await supabase.from('family_messages').delete().eq('id', oldest.id);
-      }
+      if (oldest) await supabase.from('family_messages').delete().eq('id', oldest.id);
     }
 
     const newMsg = {
@@ -259,5 +181,34 @@ export const dataService = {
      const history = await dataService.getChatHistory();
      history.push(message);
      localStorage.setItem(`fp_chat_ai_${userId}`, JSON.stringify(history));
+  },
+
+  // --- RESET TO DEFAULTS ---
+  // Fix for Error in file components/Sidebar.tsx on line 88: Property 'resetCalendarsToDefault' does not exist on type dataService
+  resetCalendarsToDefault: async () => {
+    const userId = getActiveUserId();
+    if (!userId || !supabase) return;
+    
+    // 1. Delete all events for this user
+    await supabase.from('events').delete().eq('user_id', userId);
+    
+    // 2. Delete all calendars for this user
+    await supabase.from('calendars').delete().eq('user_id', userId);
+    
+    // 3. Get defaults based on plan
+    const user = authService.getCurrentUser();
+    const plan = user?.plan || 'free';
+    const defaultCals = PLAN_CALENDARS[plan as keyof typeof PLAN_CALENDARS] || PLAN_CALENDARS.free;
+    
+    // 4. Create new default calendars
+    const newCals = defaultCals.map(c => ({
+      id: crypto.randomUUID(),
+      user_id: userId,
+      label: c.label,
+      color: c.color,
+      visible: true
+    }));
+    
+    await supabase.from('calendars').insert(newCals);
   }
 };
