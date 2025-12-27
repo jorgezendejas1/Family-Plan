@@ -135,8 +135,6 @@ const App: React.FC = () => {
     let end: Date;
     
     if (view === 'month') {
-        // CORRECCIÓN CLAVE: Calculamos el rango desde el inicio de la semana del primer día del mes
-        // para capturar los eventos que se ven en los días "grises" de la cuadrícula.
         start = startOfWeek(startOfMonth(currentDate), { locale: es });
         end = endOfWeek(endOfMonth(currentDate), { locale: es });
     } else if (view === 'week') { 
@@ -158,7 +156,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className={`flex flex-col h-screen bg-gray-50 dark:bg-black font-sans ${theme === 'dark' ? 'dark' : ''}`}>
+    <div className={`flex flex-col min-h-screen bg-gray-50 dark:bg-black font-sans ${theme === 'dark' ? 'dark' : ''}`}>
       <Header 
         currentDate={currentDate} view={searchCriteria.query.trim() ? 'search' : view} events={events}
         onViewChange={setView} onDateSelect={setCurrentDate} onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -172,7 +170,7 @@ const App: React.FC = () => {
         currentUser={currentUser} onLogout={handleLogout}
       />
 
-      <div className="flex-1 flex overflow-hidden px-6 pb-6 gap-6 safe-area-pb relative">
+      <div className="flex flex-col lg:flex-row px-4 md:px-6 pb-6 gap-6 safe-area-pb relative overflow-visible flex-1">
         <Sidebar 
           isOpen={isSidebarOpen} currentDate={currentDate} onDateSelect={setCurrentDate}
           onCreateClick={() => setIsModalOpen(true)} currentView={view} onViewChange={setView}
@@ -182,7 +180,7 @@ const App: React.FC = () => {
           currentUser={currentUser} onLogout={handleLogout} onOpenPricing={() => setIsPricingOpen(true)}
         />
 
-        <main className={`flex-1 bg-white dark:bg-zinc-950 rounded-[32px] border border-gray-200 dark:border-zinc-800 shadow-premium overflow-hidden relative flex flex-col transition-all duration-500`}>
+        <main className={`flex-1 bg-white dark:bg-zinc-950 rounded-[32px] border border-gray-200 dark:border-zinc-800 shadow-premium relative flex flex-col transition-all duration-500 overflow-visible min-h-[600px]`}>
             {isSyncing && (
                 <div className="absolute top-4 right-4 z-50 flex items-center gap-2 bg-white/80 dark:bg-black/80 backdrop-blur-md px-3 py-1.5 rounded-full border border-gray-100 dark:border-zinc-800 shadow-sm animate-fade-in">
                     <Loader2 className="animate-spin text-blue-500" size={14} />
@@ -191,17 +189,17 @@ const App: React.FC = () => {
             )}
             
             {view === 'users' ? <UserManagement /> : searchCriteria.query.trim() ? <SearchResultsView events={displayedEvents} calendars={calendars} onEventClick={setSelectedEvent} currentDate={currentDate} /> : (
-              <>
+              <div className="flex-1 overflow-visible">
                 {view === 'month' && <MonthView currentDate={currentDate} events={displayedEvents} calendars={calendars} onEventClick={setSelectedEvent} onTimeSlotClick={setCurrentDate} onToggleTaskCompletion={t => handleSaveEvent({...t, isCompleted: !t.isCompleted})} />}
                 {view === 'week' && <WeekView currentDate={currentDate} events={displayedEvents} calendars={calendars} onEventClick={setSelectedEvent} onToggleTaskCompletion={t => handleSaveEvent({...t, isCompleted: !t.isCompleted})} />}
                 {view === 'day' && <DayView currentDate={currentDate} events={displayedEvents} calendars={calendars} onEventClick={setSelectedEvent} onToggleTaskCompletion={t => handleSaveEvent({...t, isCompleted: !t.isCompleted})} />}
                 {view === 'agenda' && <AgendaView currentDate={currentDate} events={displayedEvents} calendars={calendars} onEventClick={setSelectedEvent} onToggleTaskCompletion={t => handleSaveEvent({...t, isCompleted: !t.isCompleted})} />}
-              </>
+              </div>
             )}
         </main>
       </div>
 
-      <button onClick={() => setIsModalOpen(true)} className="fixed bottom-24 right-6 z-50 w-16 h-16 bg-black dark:bg-white text-white dark:text-black rounded-2xl shadow-2xl flex items-center justify-center hover:scale-110 transition-all group border border-white/20"><Plus size={32} strokeWidth={3} /></button>
+      <button onClick={() => setIsModalOpen(true)} className="fixed bottom-6 right-6 z-50 w-16 h-16 bg-black dark:bg-white text-white dark:text-black rounded-2xl shadow-2xl flex items-center justify-center hover:scale-110 transition-all group border border-white/20 active:scale-90"><Plus size={32} strokeWidth={3} /></button>
       <ChatBot onAddEvent={handleSaveEvent} calendars={calendars} events={events} currentUser={currentUser} onOpenPricing={() => setIsPricingOpen(true)} />
       <EventModal isOpen={isModalOpen || !!selectedEvent} onClose={() => {setIsModalOpen(false); setSelectedEvent(null)}} onSave={handleSaveEvent} calendars={calendars} existingEvent={selectedEvent} onDelete={(id) => dataService.deleteEvent(id).then(() => setEvents(p => p.filter(e => e.id !== id)))} />
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} events={events} onImportEvents={evs => evs.forEach(handleSaveEvent)} timeZoneConfig={timeZoneConfig} onTimeZoneChange={c => { setTimeZoneConfig(c); dataService.saveSettings({ timezone_config: c }); }} />

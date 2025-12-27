@@ -59,7 +59,6 @@ const mapEventToDB = async (event: CalendarEvent, userId: string) => {
   };
 };
 
-// Singleton lock to prevent duplicate seeding during race conditions
 let seedingInProgress = false;
 
 export const dataService = {
@@ -69,9 +68,10 @@ export const dataService = {
 
     const { data, error } = await supabase.from('calendars').select('*').eq('user_id', user.id);
     
-    if (!error && data && data.length > 0) return data;
+    if (!error && data && data.length > 0) {
+        return data;
+    }
     
-    // If seeding is already happening, wait for it instead of starting a new one
     if (seedingInProgress) {
         await new Promise(resolve => setTimeout(resolve, 800));
         const retry = await supabase.from('calendars').select('*').eq('user_id', user.id);
@@ -80,12 +80,14 @@ export const dataService = {
 
     seedingInProgress = true;
     try {
-        // Re-check inside the lock
         const finalCheck = await supabase.from('calendars').select('*').eq('user_id', user.id);
         if (finalCheck.data && finalCheck.data.length > 0) return finalCheck.data;
 
-        // Lógica de Seeding por Plan
-        const planKey = (user.role === 'master' || user.role === 'family') ? 'pro' : user.plan;
+        let planKey = user.plan;
+        if (user.role === 'master' || user.email === 'admin@familyplan.com') {
+            planKey = 'admin';
+        }
+        
         const defaultSet = PLAN_CALENDARS[planKey as keyof typeof PLAN_CALENDARS] || PLAN_CALENDARS.free;
         
         const seed = defaultSet.map((c, idx) => ({ 
@@ -96,7 +98,8 @@ export const dataService = {
           visible: true 
         }));
 
-        await supabase.from('calendars').insert(seed);
+        const { error: insertError } = await supabase.from('calendars').insert(seed);
+        if (insertError) throw insertError;
         return seed;
     } finally {
         seedingInProgress = false;
@@ -107,13 +110,33 @@ export const dataService = {
     const user = authService.getCurrentUser();
     if (!user || !supabase) return [];
 
-    // 1. Borrar eventos y calendarios actuales del usuario
-    await supabase.from('events').delete().eq('user_id', user.id);
-    await supabase.from('calendars').delete().eq('user_id', user.id);
+    // 1. Borrar TODO de forma secuencial
+    const { error: eventError } = await supabase.from('events').delete().eq('user_id', user.id);
+    if (eventError) console.error('Error eventos:', eventError);
+    
+    const { error: calError } = await supabase.from('calendars').delete().eq('user_id', user.id);
+    if (calError) console.error('Error cals:', calError);
 
-    // 2. Volver a sembrar usando la lógica normal de getCalendars
-    // (Al no haber datos, getCalendars activará el seeding con los nuevos defaults)
-    return await dataService.getCalendars();
+    // 2. Inmediatamente después de borrar, realizar el sembrado (seeding) manual
+    // para evitar que la siguiente llamada a getCalendars (tras el reload) falle por lag de DB.
+    let planKey = user.plan;
+    if (user.role === 'master' || user.email === 'admin@familyplan.com') {
+        planKey = 'admin';
+    }
+    
+    const defaultSet = PLAN_CALENDARS[planKey as keyof typeof PLAN_CALENDARS] || PLAN_CALENDARS.free;
+    const seed = defaultSet.map(c => ({ 
+      id: crypto.randomUUID(), 
+      user_id: user.id, 
+      label: c.label, 
+      color: c.color, 
+      visible: true 
+    }));
+
+    const { error: finalSeedError } = await supabase.from('calendars').insert(seed);
+    if (finalSeedError) throw finalSeedError;
+
+    return seed;
   },
 
   updateCalendar: async (id: string, updates: Partial<CalendarConfig>) => {
@@ -125,7 +148,6 @@ export const dataService = {
   deleteCalendar: async (id: string) => {
     const userId = getActiveUserId();
     if (!userId || !supabase) return;
-    // Eliminar calendario y sus eventos asociados (cascada lógica)
     await supabase.from('events').delete().eq('calendar_id', id).eq('user_id', userId);
     await supabase.from('calendars').delete().eq('id', id).eq('user_id', userId);
   },

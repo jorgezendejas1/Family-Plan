@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
-  X, Check, Bot, Zap, ArrowUp, CalendarDays, Edit3, Mic
+  X, Check, Bot, Zap, ArrowUp, CalendarDays, Edit3, Mic, ChevronDown
 } from 'lucide-react';
 import { format, addMinutes, isWithinInterval, startOfISOWeek, endOfISOWeek, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -40,6 +40,10 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+
+  // Swipe logic state
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
 
   const weeklyUsage = useMemo(() => {
     const start = startOfISOWeek(new Date());
@@ -216,6 +220,25 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, selectedCalendarId: calId } : m));
   };
 
+  // Swipe handlers
+  const onTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientY);
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientY);
+  };
+
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchEnd - touchStart;
+    const isSwipeDown = distance > 100;
+    if (isSwipeDown) {
+      setIsOpen(false);
+    }
+  };
+
   const renderMessageContent = (msg: Message) => {
     if (msg.limitReached) {
         return (
@@ -243,7 +266,7 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
         }
 
         return (
-            <div className="bg-white dark:bg-zinc-900 p-4 rounded-3xl border border-gray-100 dark:border-zinc-800 shadow-xl w-[320px] animate-scale-in flex flex-col gap-4">
+            <div className="bg-white dark:bg-zinc-900 p-4 rounded-3xl border border-gray-100 dark:border-zinc-800 shadow-xl w-full max-w-[320px] animate-scale-in flex flex-col gap-4">
                 <div className="flex justify-between items-start">
                    <div className="flex flex-col">
                         <span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Borrador IA</span>
@@ -313,9 +336,10 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
 
   return (
     <>
+      {/* FAB SECUNDARIO IA - Movido a bottom-24 */}
       <button 
         onClick={() => setIsOpen(true)} 
-        className="fixed bottom-6 right-6 z-50 w-16 h-16 rounded-2xl shadow-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 flex items-center justify-center hover:scale-110 active:scale-95 transition-all group overflow-hidden"
+        className="fixed bottom-24 right-6 z-50 w-16 h-16 rounded-2xl shadow-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 flex items-center justify-center hover:scale-110 active:scale-95 transition-all group overflow-hidden"
       >
         <div className="absolute inset-0 bg-gradient-to-tr from-blue-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
         <img src={BOT_AVATAR_URL} className="w-8 h-8 object-contain relative z-10" alt="IA" />
@@ -323,10 +347,20 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
       </button>
 
       {isOpen && (
-        <div className="fixed bottom-6 right-6 z-[100] w-[90vw] h-[75vh] md:w-[400px] md:h-[600px] bg-white/95 dark:bg-black/95 backdrop-blur-2xl rounded-[32px] border border-gray-200/50 dark:border-zinc-800 flex flex-col shadow-2xl animate-scale-in origin-bottom-right">
-           <div className="p-4 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-white/50 dark:bg-black/50 rounded-t-[32px]">
+        <div 
+          className="fixed inset-0 md:inset-auto md:bottom-6 md:right-6 z-[100] w-full h-full md:w-[400px] md:h-[600px] bg-white dark:bg-black md:bg-white/95 md:dark:bg-black/95 backdrop-blur-2xl md:rounded-[32px] md:border border-gray-200/50 dark:border-zinc-800 flex flex-col shadow-2xl animate-fade-in md:animate-scale-in origin-bottom-right"
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+        >
+           {/* Handle visual para swipe down en móvil */}
+           <div className="w-full flex justify-center pt-2 md:hidden">
+              <div className="w-12 h-1.5 bg-gray-200 dark:bg-gray-800 rounded-full"></div>
+           </div>
+
+           <div className="p-4 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-white/50 dark:bg-black/50 md:rounded-t-[32px]">
               <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-zinc-900 flex items-center justify-center">
+                 <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-zinc-800 flex items-center justify-center">
                     <img src={BOT_AVATAR_URL} className="w-6 h-6 object-contain" alt="Bot" />
                  </div>
                  <div>
@@ -337,9 +371,10 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
                     </div>
                  </div>
               </div>
-              <button onClick={() => setIsOpen(false)} className="p-2 bg-gray-50 dark:bg-zinc-800 rounded-full text-gray-500 hover:bg-gray-100 transition-colors"><X size={18} /></button>
+              <button onClick={() => setIsOpen(false)} className="p-2 bg-gray-50 dark:bg-zinc-800 rounded-full text-gray-500 hover:bg-gray-100 transition-colors active:scale-90"><X size={18} /></button>
            </div>
 
+           {/* Mensajes arriba */}
            <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-white dark:bg-black">
               {messages.map((msg) => (
                  <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -350,18 +385,23 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
               <div ref={messagesEndRef}></div>
            </div>
 
-           <div className="p-4 border-t border-gray-100 dark:border-zinc-800 bg-white/50 dark:bg-black/50 rounded-b-[32px]">
+           {/* Input abajo con Safe Area en móvil */}
+           <div className="p-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] border-t border-gray-100 dark:border-zinc-800 bg-white/50 dark:bg-black/50 md:rounded-b-[32px]">
               <div className="flex items-center gap-2 bg-gray-100 dark:bg-zinc-900 rounded-2xl px-4 py-2 focus-within:ring-2 ring-blue-500/30 transition-all">
                  <textarea 
                    className="flex-1 bg-transparent border-none outline-none text-sm dark:text-white py-1 resize-none h-10 max-h-24"
-                   placeholder="Escribe un mensaje o sube una foto..."
+                   placeholder="Escribe un mensaje..."
                    value={input}
                    onChange={(e) => setInput(e.target.value)}
                    onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())}
                  />
                  <button onClick={handleSend} disabled={isLoading} className="text-blue-600 p-2 bg-white dark:bg-zinc-800 rounded-xl shadow-sm active:scale-90 transition-transform"><ArrowUp size={20} strokeWidth={3} /></button>
               </div>
-              <p className="text-[10px] text-center text-gray-400 mt-2">Puedes dictar por voz o subir fotos de invitaciones.</p>
+              <div className="flex items-center justify-center gap-2 mt-3 md:hidden">
+                 <button onClick={() => setIsOpen(false)} className="text-[10px] font-bold text-gray-400 flex items-center gap-1 uppercase tracking-widest">
+                    <ChevronDown size={12} /> Desliza para cerrar
+                 </button>
+              </div>
            </div>
         </div>
       )}

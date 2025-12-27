@@ -2,8 +2,8 @@
 import { CalendarConfig } from './types';
 
 export const EVENT_COLORS = [
-  '#039BE5', '#3F51B5', '#D50000', '#E91E63', '#8E24AA', 
-  '#33B679', '#F6BF26', '#F4511E', '#616161', '#7986CB',
+  '#E91E63', '#039BE5', '#8E24AA', '#33B679', '#F6BF26', 
+  '#F4511E', '#3F51B5', '#616161', '#7986CB', '#D50000',
 ];
 
 export const REMINDER_OPTIONS = [
@@ -17,7 +17,19 @@ export const REMINDER_OPTIONS = [
   { value: 10080, label: '1 semana antes' },
 ];
 
-// Configuración por Plan
+// Configuración por Plan (Composición exacta solicitada por el usuario)
+const ADMIN_DEFAULTS = [
+  { label: 'Admin:', color: '#000000' },
+  { label: 'Mama', color: '#E91E63' },
+  { label: 'Papa', color: '#039BE5' },
+  { label: 'Hija', color: '#8E24AA' },
+  { label: 'Hijo', color: '#33B679' },
+  { label: 'Hijita', color: '#F6BF26' },
+  { label: 'Hijito', color: '#F4511E' },
+  { label: 'Familia', color: '#3F51B5' },
+  { label: 'Otros', color: '#616161' }
+];
+
 export const PLAN_CALENDARS = {
   free: [
     { label: 'Personal', color: '#039BE5' }
@@ -38,19 +50,8 @@ export const PLAN_CALENDARS = {
     { label: 'Hija', color: '#F6BF26' },
     { label: 'Familia', color: '#3F51B5' }
   ],
-  admin: [
-    { label: 'Mama', color: '#E91E63' },
-    { label: 'Papa', color: '#039BE5' },
-    { label: 'Hija', color: '#F6BF26' },
-    { label: 'Hijo', color: '#33B679' },
-    { label: 'Hijita', color: '#8E24AA' },
-    { label: 'Hijito', color: '#F4511E' },
-    { label: 'Familia', color: '#3F51B5' },
-    { label: 'Otros', color: '#616161' }
-  ],
-  unlimited: [
-    { label: 'Admin', color: '#000000' }
-  ]
+  admin: ADMIN_DEFAULTS,
+  unlimited: ADMIN_DEFAULTS
 };
 
 export const PLAN_LIMITS = {
