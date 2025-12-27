@@ -1,6 +1,6 @@
 
 import { supabase } from './supabaseClient';
-import { CalendarEvent, CalendarConfig, Theme, TimeZoneConfig, PlanType } from '../types';
+import { CalendarEvent, CalendarConfig, Theme, TimeZoneConfig, PlanType, FamilyChatMessage } from '../types';
 import { PLAN_CALENDARS, DEFAULT_CALENDARS } from '../constants';
 import { isValid, parseISO } from 'date-fns';
 import { authService } from './authService';
@@ -110,15 +110,12 @@ export const dataService = {
     const user = authService.getCurrentUser();
     if (!user || !supabase) return [];
 
-    // 1. Borrar TODO de forma secuencial
     const { error: eventError } = await supabase.from('events').delete().eq('user_id', user.id);
     if (eventError) console.error('Error eventos:', eventError);
     
     const { error: calError } = await supabase.from('calendars').delete().eq('user_id', user.id);
     if (calError) console.error('Error cals:', calError);
 
-    // 2. Inmediatamente después de borrar, realizar el sembrado (seeding) manual
-    // para evitar que la siguiente llamada a getCalendars (tras el reload) falle por lag de DB.
     let planKey = user.plan;
     if (user.role === 'master' || user.email === 'admin@familyplan.com') {
         planKey = 'admin';
@@ -199,9 +196,61 @@ export const dataService = {
     await supabase.from('settings').upsert({ ...settings, user_id: userId });
   },
 
+  // --- FAMILY CHAT METHODS ---
+  getFamilyMessages: async (): Promise<FamilyChatMessage[]> => {
+    const userId = getActiveUserId();
+    if (!userId || !supabase) return [];
+    // Nota: family_id en este MVP es el id del usuario master (mismo id para todos)
+    const { data } = await supabase
+      .from('family_messages')
+      .select('*')
+      .eq('family_id', userId)
+      .order('created_at', { ascending: true })
+      .limit(200);
+    return data || [];
+  },
+
+  sendFamilyMessage: async (msg: Partial<FamilyChatMessage>) => {
+    const userId = getActiveUserId();
+    if (!userId || !supabase) return;
+    
+    // Check count for 200 limit (FIFO)
+    const { count } = await supabase
+      .from('family_messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('family_id', userId);
+
+    if (count && count >= 200) {
+      // Get oldest message
+      const { data: oldest } = await supabase
+        .from('family_messages')
+        .select('id')
+        .eq('family_id', userId)
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .single();
+      
+      if (oldest) {
+        await supabase.from('family_messages').delete().eq('id', oldest.id);
+      }
+    }
+
+    const newMsg = {
+      id: crypto.randomUUID(),
+      family_id: userId,
+      sender_label: msg.sender_label,
+      content: msg.content,
+      mentions: msg.mentions || [],
+      created_at: new Date().toISOString()
+    };
+
+    await supabase.from('family_messages').insert(newMsg);
+    return newMsg;
+  },
+
   getChatHistory: async () => {
      const userId = getActiveUserId();
-     const history = localStorage.getItem(`fp_chat_${userId}`);
+     const history = localStorage.getItem(`fp_chat_ai_${userId}`);
      return history ? JSON.parse(history) : [];
   },
 
@@ -209,6 +258,6 @@ export const dataService = {
      const userId = getActiveUserId();
      const history = await dataService.getChatHistory();
      history.push(message);
-     localStorage.setItem(`fp_chat_${userId}`, JSON.stringify(history));
+     localStorage.setItem(`fp_chat_ai_${userId}`, JSON.stringify(history));
   }
 };

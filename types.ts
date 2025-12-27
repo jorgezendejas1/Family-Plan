@@ -24,7 +24,16 @@ export interface CalendarConfig {
   color: string;
   visible: boolean;
   isRemote?: boolean; 
-  googleAccountEmail?: string; // Nuevo: Vinculación con cuenta de Google
+  googleAccountEmail?: string; 
+}
+
+export interface FamilyChatMessage {
+  id: string;
+  family_id: string;
+  sender_label: string;
+  content: string;
+  mentions: string[];
+  created_at: string;
 }
 
 export interface CalendarEvent {
@@ -49,7 +58,7 @@ export interface CalendarEvent {
   isTask?: boolean;
   isCompleted?: boolean;
   isImportant?: boolean; 
-  createdByBot?: boolean; // Tracking for SaaS limits
+  createdByBot?: boolean; 
 }
 
 export interface ViewProps {

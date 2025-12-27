@@ -1,11 +1,11 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
-  X, Check, Bot, Zap, ArrowUp, CalendarDays, Edit3, Mic, ChevronDown
+  X, Check, Bot, Zap, ArrowUp, CalendarDays, Edit3, Mic, ChevronDown, MessageSquare, Sparkles, AtSign
 } from 'lucide-react';
 import { format, addMinutes, isWithinInterval, startOfISOWeek, endOfISOWeek, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { CalendarConfig, CalendarEvent, User } from '../types';
+import { CalendarConfig, CalendarEvent, User, FamilyChatMessage } from '../types';
 import { dataService } from '../services/dataService'; 
 import ReactMarkdown from 'react-markdown';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -34,16 +34,18 @@ interface Message {
 
 const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = [], currentUser, onOpenPricing }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [input, setInput] = useState('');
+  const [activeTab, setActiveTab] = useState<'family' | 'ai'>('family');
+  const [aiInput, setAiInput] = useState('');
+  const [familyInput, setFamilyInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const familyMessagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Swipe logic state
-  const [touchStart, setTouchStart] = useState<number | null>(null);
-  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+  const [aiMessages, setAiMessages] = useState<Message[]>([]);
+  const [familyMessages, setFamilyMessages] = useState<FamilyChatMessage[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
 
   const weeklyUsage = useMemo(() => {
     const start = startOfISOWeek(new Date());
@@ -60,346 +62,258 @@ const ChatBot: React.FC<ChatBotProps> = ({ onAddEvent, calendars = [], events = 
 
   const isLimitReached = weeklyUsage >= maxWeeklyEvents;
 
+  // Sync family messages every 5 seconds
   useEffect(() => {
-    const loadHistory = async () => {
+    const fetchFamilyMessages = async () => {
+      const msgs = await dataService.getFamilyMessages();
+      if (msgs.length > familyMessages.length) {
+        if (!isOpen || activeTab !== 'family') {
+          setUnreadCount(prev => prev + (msgs.length - familyMessages.length));
+        }
+      }
+      setFamilyMessages(msgs);
+    };
+
+    fetchFamilyMessages();
+    const interval = setInterval(fetchFamilyMessages, 5000);
+    return () => clearInterval(interval);
+  }, [familyMessages.length, isOpen, activeTab]);
+
+  useEffect(() => {
+    if (isOpen && activeTab === 'family') {
+      setUnreadCount(0);
+    }
+  }, [isOpen, activeTab]);
+
+  useEffect(() => {
+    const loadAIHistory = async () => {
         const history = await dataService.getChatHistory();
         if (history && history.length > 0) {
-            setMessages(history);
+            setAiMessages(history);
         } else {
-            setMessages([{ 
-                id: 'welcome', 
+            setAiMessages([{ 
+                id: 'welcome_ai', 
                 role: 'model', 
-                text: `¡Hola Familia! Soy vuestro asistente. ¿Qué plan o tarea necesitáis agendar hoy para alguno de los miembros?`
+                text: `Indique evento o tarea a agendar.`
             }]);
         }
         setHistoryLoaded(true);
     };
-    if (isOpen && !historyLoaded) {
-        loadHistory();
+    if (isOpen && activeTab === 'ai' && !historyLoaded) {
+        loadAIHistory();
     }
-  }, [isOpen, historyLoaded, currentUser]);
+  }, [isOpen, activeTab, historyLoaded]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isOpen, isLoading]);
+    if (activeTab === 'ai') messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    else familyMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [aiMessages, familyMessages, activeTab, isOpen]);
 
-  const appendMessage = async (msg: Message) => {
-      setMessages(prev => [...prev, msg]);
-      await dataService.saveChatMessage(msg);
+  const handleSendFamily = async () => {
+    if (!familyInput.trim()) return;
+    
+    // Extract mentions
+    const mentions = calendars
+      .filter(c => familyInput.toLowerCase().includes(`@${c.label.toLowerCase()}`))
+      .map(c => c.label);
+
+    const newMsg = await dataService.sendFamilyMessage({
+      sender_label: currentUser.name,
+      content: familyInput,
+      mentions
+    });
+
+    if (newMsg) {
+      setFamilyMessages(prev => [...prev, newMsg]);
+      setFamilyInput('');
+    }
   };
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+  const handleSendAI = async () => {
+    const userText = aiInput.trim();
+    if (!userText || isLoading) return;
 
     if (isLimitReached) {
-        await appendMessage({
-            id: Date.now().toString() + '_limit',
-            role: 'system',
-            limitReached: true,
-            text: 'Has alcanzado tu límite semanal de eventos creados por IA.'
-        });
-        setInput('');
+        setAiMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', limitReached: true }]);
+        setAiInput('');
         return;
     }
 
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      text: input,
-    };
+    const userMessage: Message = { id: Date.now().toString(), role: 'user', text: userText };
 
-    await appendMessage(userMessage);
-    setInput('');
+    setAiMessages(prev => [...prev, userMessage]);
+    setAiInput('');
     setIsLoading(true);
 
     try {
-      const currentDate = new Date().toISOString();
-      const eventsContext = events.slice(-30).map(e => ({ title: e.title, start: e.start, end: e.end }));
+      const systemInstruction = `
+        ERES: El asistente de creación de eventos de “Family Plan”.
+        ROL ÚNICO: Solo ayudas a agendar. Sin conversación general.
+        REGLAS:
+        1. Devuelve BORRADOR estructurado mediante 'create_calendar_event'.
+        2. Pregunta: “¿Lo creo así?”.
+        3. Tono: Corto, eficiente, sin emojis.
+        FECHA ACTUAL: ${new Date().toISOString()}.
+      `;
 
       const createEventTool = {
         name: 'create_calendar_event',
-        description: 'FINAL STEP ONLY. Create event or task draft.',
         parameters: {
           type: Type.OBJECT,
           properties: {
             title: { type: Type.STRING },
             start: { type: Type.STRING },
-            end: { type: Type.STRING },
-            description: { type: Type.STRING },
-            location: { type: Type.STRING },
-            calendarName: { type: Type.STRING, description: 'Sugerencia de miembro de la familia (ej: Mama, Papa, Hijo, Hija)' },
+            calendarName: { type: Type.STRING },
             category: { type: Type.STRING, enum: ['Escuela', 'Deporte', 'Trabajo', 'Salud', 'Social', 'Hogar', 'Otro'] },
-            isTask: { type: Type.BOOLEAN, description: 'True si es una tarea pendiente, False si es un evento con hora.' }
+            isTask: { type: Type.BOOLEAN }
           },
           required: ['title', 'start', 'category']
         }
       };
 
-      const systemInstruction = `
-        ERES: El asistente inteligente de "Family Plan". 
-        VISIÓN: Una familia usa una sola cuenta. Tu trabajo es organizar a todos los miembros.
-        CONTEXTO FAMILIAR: ${JSON.stringify(eventsContext)}. 
-        FECHA ACTUAL: ${currentDate}.
-        MIEMBROS DISPONIBLES (Calendarios): ${calendars.map(c => c.label).join(', ')}.
-        
-        REGLAS:
-        1. Si el usuario menciona a un miembro (ej: "Papá"), sugiere el calendario correspondiente.
-        2. Puedes crear tanto eventos (citas con hora) como tareas (pendientes).
-        3. Sé amable, eficiente y conciso. Eres parte de la familia.
-      `;
-
-      const apiHistory = messages.filter(m => m.role !== 'system' && !m.eventDraft).slice(-10).map(m => ({ role: m.role, parts: [{ text: m.text || '' }] }));
-
       const response = await ai.models.generateContent({
         model: 'gemini-3-pro-preview',
-        contents: [...apiHistory, { role: 'user', parts: [{ text: userMessage.text || '' }] }],
+        contents: aiMessages.slice(-5).map(m => ({ role: m.role, parts: [{ text: m.text || '' }] })).concat({ role: 'user', parts: [{ text: userText }] }),
         config: { systemInstruction, tools: [{ functionDeclarations: [createEventTool] }] }
       });
 
       const toolCalls = response.functionCalls;
-      const text = response.text;
-
       if (toolCalls && toolCalls.length > 0) {
-          for (const call of toolCalls) {
-              if (call.name === 'create_calendar_event') {
-                  const args = call.args as any;
-                  
-                  let suggestedId = calendars[0]?.id || 'default';
-                  if (args.calendarName) {
-                      const found = calendars.find(c => c.label.toLowerCase().includes(args.calendarName.toLowerCase()));
-                      if (found) suggestedId = found.id;
-                  }
-
-                  const eventData = { 
-                    ...args, 
-                    start: parseISO(args.start), 
-                    end: args.end ? parseISO(args.end) : addMinutes(parseISO(args.start), 60), 
-                    createdByBot: true 
-                  };
-                  
-                  await appendMessage({ 
-                    id: Date.now().toString(), 
-                    role: 'system', 
-                    eventDraft: eventData,
-                    selectedCalendarId: suggestedId 
-                  });
-              }
-          }
+          const args = toolCalls[0].args as any;
+          const foundCal = calendars.find(c => c.label.toLowerCase().includes(args.calendarName?.toLowerCase()));
+          const eventDraft = { ...args, start: parseISO(args.start), createdByBot: true };
+          
+          setAiMessages(prev => [...prev, { 
+            id: Date.now().toString(), 
+            role: 'system', 
+            eventDraft, 
+            selectedCalendarId: foundCal?.id || calendars[0].id 
+          }]);
       }
-      if (text) await appendMessage({ id: Date.now().toString(), role: 'model', text });
+      if (response.text) {
+          setAiMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: response.text.trim() }]);
+      }
     } catch (e) {
-      await appendMessage({ id: Date.now().toString(), role: 'system', text: '❌ Error al procesar tu solicitud familiar.' });
+      setAiMessages(prev => [...prev, { id: Date.now().toString(), role: 'system', text: 'Error.' }]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleConfirmDraft = async (msg: Message) => {
-    const finalEvent = {
-        ...msg.eventDraft,
-        calendarId: msg.selectedCalendarId
-    };
+  const renderFamilyMessage = (msg: FamilyChatMessage) => {
+    const isMe = msg.sender_label === currentUser.name;
     
-    onAddEvent(finalEvent);
-    
-    const calLabel = calendars.find(c => c.id === msg.selectedCalendarId)?.label || 'Familiar';
-    
-    setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, actionTaken: 'confirmed' } : m));
-    
-    setTimeout(() => {
-        appendMessage({
-            id: Date.now().toString() + '_success',
-            role: 'model',
-            text: `¡Listo! He agendado **${msg.eventDraft.title}** para **${calLabel}**.`
-        });
-    }, 400);
-  };
+    // Highlight mentions logic
+    let content: any = msg.content;
+    calendars.forEach(cal => {
+       const regex = new RegExp(`@${cal.label}`, 'gi');
+       if (regex.test(content)) {
+          content = content.split(regex).reduce((prev: any, current: any, i: number) => {
+             if (i === 0) return [current];
+             return [...prev, <span key={i} className="font-black px-1 rounded mx-0.5" style={{ backgroundColor: `${cal.color}20`, color: cal.color }}>@{cal.label}</span>, current];
+          }, []);
+       }
+    });
 
-  const changeDraftCalendar = (msgId: string, calId: string) => {
-    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, selectedCalendarId: calId } : m));
-  };
-
-  // Swipe handlers
-  const onTouchStart = (e: React.TouchEvent) => {
-    setTouchEnd(null);
-    setTouchStart(e.targetTouches[0].clientY);
-  };
-
-  const onTouchMove = (e: React.TouchEvent) => {
-    setTouchEnd(e.targetTouches[0].clientY);
-  };
-
-  const onTouchEnd = () => {
-    if (!touchStart || !touchEnd) return;
-    const distance = touchEnd - touchStart;
-    const isSwipeDown = distance > 100;
-    if (isSwipeDown) {
-      setIsOpen(false);
-    }
-  };
-
-  const renderMessageContent = (msg: Message) => {
-    if (msg.limitReached) {
-        return (
-            <div className="w-full p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800/50 rounded-2xl flex flex-col items-center text-center gap-3 animate-scale-in">
-                <Zap size={24} className="text-orange-600" fill="currentColor" />
-                <div className="space-y-1">
-                    <h4 className="text-sm font-bold text-orange-900 dark:text-orange-200">Límite de IA alcanzado</h4>
-                    <p className="text-xs text-orange-700 dark:text-orange-400">Has usado tus creaciones semanales para el plan {currentUser.plan}.</p>
-                </div>
-                <button onClick={onOpenPricing} className="bg-orange-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg active:scale-95 transition-all">Mejorar mi plan</button>
-            </div>
-        );
-    }
-
-    if (msg.eventDraft) {
-        if (msg.actionTaken === 'confirmed') {
-            return (
-                <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-[20px] border border-green-100 dark:border-green-800/50 flex items-center gap-3 animate-fade-in shadow-sm">
-                    <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-white shrink-0">
-                        <Check size={16} strokeWidth={4} />
-                    </div>
-                    <p className="text-xs font-bold text-green-800 dark:text-green-300">¡Agendado!</p>
-                </div>
-            );
-        }
-
-        return (
-            <div className="bg-white dark:bg-zinc-900 p-4 rounded-3xl border border-gray-100 dark:border-zinc-800 shadow-xl w-full max-w-[320px] animate-scale-in flex flex-col gap-4">
-                <div className="flex justify-between items-start">
-                   <div className="flex flex-col">
-                        <span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Borrador IA</span>
-                        <h4 className="font-bold text-gray-900 dark:text-white truncate text-lg mt-1">{msg.eventDraft.title}</h4>
-                   </div>
-                   <div className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-600">
-                        <CalendarDays size={18} />
-                   </div>
-                </div>
-                
-                <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <span className="capitalize">{format(msg.eventDraft.start, "EEEE d MMMM", { locale: es })}</span>
-                        <span className="w-1 h-1 rounded-full bg-gray-300"></span>
-                        <span>{format(msg.eventDraft.start, "h:mm a")}</span>
-                    </div>
-                    
-                    <div className="pt-2 border-t border-gray-50 dark:border-zinc-800">
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 px-1">¿Para quién es?</p>
-                        <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar -mx-1 px-1">
-                            {calendars.map(cal => {
-                                const isSelected = msg.selectedCalendarId === cal.id;
-                                return (
-                                    <button
-                                        key={cal.id}
-                                        onClick={() => changeDraftCalendar(msg.id, cal.id)}
-                                        className={`px-3 py-1.5 rounded-full border text-[11px] font-bold transition-all shrink-0 flex items-center gap-2 ${
-                                            isSelected 
-                                            ? 'bg-blue-600 text-white border-blue-600 shadow-md scale-105' 
-                                            : 'bg-gray-50 dark:bg-zinc-800 border-gray-200 dark:border-zinc-700 text-gray-500 hover:border-blue-400'
-                                        }`}
-                                    >
-                                        {!isSelected && <div className="w-2 h-2 rounded-full" style={{ backgroundColor: cal.color }}></div>}
-                                        {cal.label}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
-                </div>
-
-                <div className="flex gap-2">
-                    <button 
-                        onClick={() => setMessages(p => p.filter(m => m.id !== msg.id))} 
-                        className="flex-1 py-3 text-xs font-bold bg-gray-100 dark:bg-zinc-800 rounded-2xl text-gray-600 hover:bg-gray-200 transition-colors"
-                    >
-                        Borrar
-                    </button>
-                    <button 
-                        onClick={() => handleConfirmDraft(msg)} 
-                        className="flex-1 py-3 text-xs font-bold bg-blue-600 text-white rounded-2xl hover:bg-blue-700 shadow-lg active:scale-95 transition-all"
-                    >
-                        Confirmar
-                    </button>
-                </div>
-            </div>
-        );
-    }
-
-    const isUser = msg.role === 'user';
     return (
-        <div className={`px-4 py-2.5 rounded-[22px] shadow-sm text-sm leading-relaxed max-w-[85%] ${isUser ? 'bg-blue-600 text-white rounded-br-sm' : 'bg-gray-100 dark:bg-zinc-900 text-gray-800 dark:text-gray-200 rounded-bl-sm'}`}>
-            <ReactMarkdown>{msg.text || ''}</ReactMarkdown>
+      <div className={`flex flex-col mb-4 ${isMe ? 'items-end' : 'items-start'}`}>
+        {!isMe && <span className="text-[10px] font-bold text-gray-400 mb-1 ml-2 uppercase tracking-widest">{msg.sender_label}</span>}
+        <div className={`px-4 py-2.5 rounded-[20px] text-sm shadow-sm ${isMe ? 'bg-blue-600 text-white rounded-br-none' : 'bg-gray-100 dark:bg-zinc-900 text-gray-800 dark:text-gray-200 rounded-bl-none'}`}>
+          {content}
         </div>
+        <span className="text-[9px] text-gray-300 mt-1 mx-1">{format(new Date(msg.created_at), 'HH:mm')}</span>
+      </div>
     );
   };
 
   return (
     <>
-      {/* FAB SECUNDARIO IA - Movido a bottom-24 */}
       <button 
         onClick={() => setIsOpen(true)} 
-        className="fixed bottom-24 right-6 z-50 w-16 h-16 rounded-2xl shadow-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 flex items-center justify-center hover:scale-110 active:scale-95 transition-all group overflow-hidden"
+        className="fixed bottom-24 right-6 z-50 w-16 h-16 rounded-2xl shadow-2xl bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 flex items-center justify-center hover:scale-110 active:scale-95 transition-all group"
       >
-        <div className="absolute inset-0 bg-gradient-to-tr from-blue-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-        <img src={BOT_AVATAR_URL} className="w-8 h-8 object-contain relative z-10" alt="IA" />
-        {isLimitReached && <div className="absolute -top-1 -right-1 w-5 h-5 bg-orange-500 rounded-full flex items-center justify-center text-[8px] text-white font-black border-2 border-white dark:border-zinc-900 z-20">!</div>}
+        <MessageSquare size={28} className="text-gray-700 dark:text-gray-200" />
+        {unreadCount > 0 && (
+          <div className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full border-2 border-white dark:border-zinc-900 animate-bounce">
+            {unreadCount}
+          </div>
+        )}
       </button>
 
       {isOpen && (
-        <div 
-          className="fixed inset-0 md:inset-auto md:bottom-6 md:right-6 z-[100] w-full h-full md:w-[400px] md:h-[600px] bg-white dark:bg-black md:bg-white/95 md:dark:bg-black/95 backdrop-blur-2xl md:rounded-[32px] md:border border-gray-200/50 dark:border-zinc-800 flex flex-col shadow-2xl animate-fade-in md:animate-scale-in origin-bottom-right"
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
-        >
-           {/* Handle visual para swipe down en móvil */}
-           <div className="w-full flex justify-center pt-2 md:hidden">
-              <div className="w-12 h-1.5 bg-gray-200 dark:bg-gray-800 rounded-full"></div>
+        <div className="fixed inset-x-0 bottom-0 md:bottom-6 md:right-6 md:left-auto z-[100] w-full h-[70vh] md:w-[420px] md:h-[650px] bg-white/95 dark:bg-black/95 backdrop-blur-3xl md:rounded-[40px] rounded-t-[40px] border-t md:border border-gray-200/50 dark:border-zinc-800/50 flex flex-col shadow-premium animate-fade-in-up">
+           
+           <div className="p-4 flex items-center justify-between">
+              <div className="flex bg-gray-100 dark:bg-zinc-900 p-1 rounded-2xl w-full">
+                 <button 
+                  onClick={() => setActiveTab('family')}
+                  className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${activeTab === 'family' ? 'bg-white dark:bg-zinc-800 shadow-sm text-black dark:text-white' : 'text-gray-400'}`}
+                 >
+                    <MessageSquare size={14} /> Familia
+                    {unreadCount > 0 && <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span>}
+                 </button>
+                 <button 
+                  onClick={() => setActiveTab('ai')}
+                  className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${activeTab === 'ai' ? 'bg-white dark:bg-zinc-800 shadow-sm text-black dark:text-white' : 'text-gray-400'}`}
+                 >
+                    <Sparkles size={14} /> Asistente IA
+                 </button>
+              </div>
+              <button onClick={() => setIsOpen(false)} className="ml-4 p-2 text-gray-400 hover:text-gray-600"><X size={20} /></button>
            </div>
 
-           <div className="p-4 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center bg-white/50 dark:bg-black/50 md:rounded-t-[32px]">
-              <div className="flex items-center gap-3">
-                 <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-zinc-800 flex items-center justify-center">
-                    <img src={BOT_AVATAR_URL} className="w-6 h-6 object-contain" alt="Bot" />
-                 </div>
-                 <div>
-                    <h3 className="text-sm font-bold dark:text-white">IA Familiar</h3>
-                    <div className="flex items-center gap-1.5">
-                       <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-                       <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{weeklyUsage}/{maxWeeklyEvents === Infinity ? '∞' : maxWeeklyEvents} IA</span>
+           <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
+              {activeTab === 'family' ? (
+                <>
+                  {familyMessages.map(msg => <div key={msg.id}>{renderFamilyMessage(msg)}</div>)}
+                  <div ref={familyMessagesEndRef}></div>
+                </>
+              ) : (
+                <>
+                  {aiMessages.map(msg => (
+                    <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} mb-4`}>
+                       {msg.eventDraft ? (
+                         <div className="bg-white dark:bg-zinc-900 p-4 rounded-3xl border border-gray-100 dark:border-zinc-800 shadow-lg w-full max-w-[300px] animate-scale-in">
+                            <span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest block mb-1">Borrador IA</span>
+                            <h4 className="font-bold text-gray-900 dark:text-white truncate mb-2">{msg.eventDraft.title}</h4>
+                            <div className="text-[11px] text-gray-400 font-bold mb-4">{format(msg.eventDraft.start, "EEEE d MMMM, HH:mm", { locale: es })}</div>
+                            <button 
+                              onClick={() => {
+                                onAddEvent({ ...msg.eventDraft, calendarId: msg.selectedCalendarId });
+                                setAiMessages(prev => prev.map(m => m.id === msg.id ? { ...m, actionTaken: 'confirmed' } : m));
+                              }}
+                              className="w-full py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold active:scale-95 transition-all"
+                            >
+                              Confirmar Evento
+                            </button>
+                         </div>
+                       ) : (
+                        <div className={`px-4 py-2.5 rounded-[22px] text-sm ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-gray-100 dark:bg-zinc-900 text-gray-800 dark:text-gray-200 rounded-bl-none'}`}>
+                          <ReactMarkdown>{msg.text || ''}</ReactMarkdown>
+                        </div>
+                       )}
                     </div>
-                 </div>
-              </div>
-              <button onClick={() => setIsOpen(false)} className="p-2 bg-gray-50 dark:bg-zinc-800 rounded-full text-gray-500 hover:bg-gray-100 transition-colors active:scale-90"><X size={18} /></button>
+                  ))}
+                  <div ref={messagesEndRef}></div>
+                </>
+              )}
            </div>
 
-           {/* Mensajes arriba */}
-           <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-white dark:bg-black">
-              {messages.map((msg) => (
-                 <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    {renderMessageContent(msg)}
-                 </div>
-              ))}
-              {isLoading && <div className="flex gap-1 p-3 bg-gray-50 dark:bg-zinc-900 rounded-full w-fit animate-pulse"><span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"></span><span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{animationDelay:'0.1s'}}></span><span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{animationDelay:'0.2s'}}></span></div>}
-              <div ref={messagesEndRef}></div>
-           </div>
-
-           {/* Input abajo con Safe Area en móvil */}
-           <div className="p-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] border-t border-gray-100 dark:border-zinc-800 bg-white/50 dark:bg-black/50 md:rounded-b-[32px]">
-              <div className="flex items-center gap-2 bg-gray-100 dark:bg-zinc-900 rounded-2xl px-4 py-2 focus-within:ring-2 ring-blue-500/30 transition-all">
+           <div className="p-6 border-t border-gray-100 dark:border-zinc-800/50 bg-white/50 dark:bg-black/50 md:rounded-b-[40px]">
+              <div className="flex items-center gap-3 bg-gray-100 dark:bg-zinc-900 rounded-[24px] px-5 py-2.5 border border-transparent focus-within:border-blue-500/20 shadow-inner">
                  <textarea 
-                   className="flex-1 bg-transparent border-none outline-none text-sm dark:text-white py-1 resize-none h-10 max-h-24"
-                   placeholder="Escribe un mensaje..."
-                   value={input}
-                   onChange={(e) => setInput(e.target.value)}
-                   onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())}
+                   className="flex-1 bg-transparent border-none outline-none text-[14px] dark:text-white py-1 resize-none h-10 max-h-32 placeholder-gray-400"
+                   placeholder={activeTab === 'family' ? "Mensaje a la familia..." : "Pide agendar algo..."}
+                   value={activeTab === 'family' ? familyInput : aiInput}
+                   onChange={(e) => activeTab === 'family' ? setFamilyInput(e.target.value) : setAiInput(e.target.value)}
+                   onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), activeTab === 'family' ? handleSendFamily() : handleSendAI())}
                  />
-                 <button onClick={handleSend} disabled={isLoading} className="text-blue-600 p-2 bg-white dark:bg-zinc-800 rounded-xl shadow-sm active:scale-90 transition-transform"><ArrowUp size={20} strokeWidth={3} /></button>
-              </div>
-              <div className="flex items-center justify-center gap-2 mt-3 md:hidden">
-                 <button onClick={() => setIsOpen(false)} className="text-[10px] font-bold text-gray-400 flex items-center gap-1 uppercase tracking-widest">
-                    <ChevronDown size={12} /> Desliza para cerrar
+                 <button 
+                  onClick={activeTab === 'family' ? handleSendFamily : handleSendAI}
+                  className="text-white p-2.5 bg-blue-600 rounded-xl shadow-lg active:scale-90 transition-transform"
+                 >
+                    <ArrowUp size={18} strokeWidth={3} />
                  </button>
               </div>
            </div>
