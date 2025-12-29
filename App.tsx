@@ -65,35 +65,54 @@ const App: React.FC = () => {
   const handleLogout = () => {
     authService.logout();
     setCurrentUser(null);
-    setShowLanding(true);
+    // Cambiamos a false para que regrese directamente al Inicio de Sesión (Login)
+    setShowLanding(false);
+    setIsSidebarOpen(false);
+    setIsTaskPanelOpen(false);
   };
 
   useEffect(() => {
     const loggedUser = authService.getCurrentUser();
-    if (loggedUser && (!currentUser || loggedUser.id !== currentUser.id)) {
-      setCurrentUser(loggedUser);
-      setShowLanding(false);
-    }
-    if (!loggedUser) {
-        setShowLanding(true);
+    
+    if (loggedUser) {
+      if (!currentUser || loggedUser.id !== currentUser.id) {
+        setCurrentUser(loggedUser);
+        setShowLanding(false);
+      }
+    } else {
+      // Si no hay usuario y no estamos forzando la vista de login, mostramos landing
+      // Pero si acabamos de desloguear (setShowLanding(false)), respetamos esa decisión.
+      if (currentUser !== null) {
         setCurrentUser(null);
-        return;
+      }
     }
-    const init = async () => {
+
+    if (!loggedUser && currentUser === null && showLanding === true) {
+      // Solo inicializamos si es el primer arranque y no hay sesión
+      const checkTour = async () => {
         const settings = await dataService.getSettings();
-        setTheme(settings.theme || 'system');
-        setTimeZoneConfig(settings.timezone_config || { primary: 'local', secondary: 'UTC', showSecondary: false });
-        if (!settings.has_seen_tour) setIsOnboardingOpen(true);
-        const [cals, evts] = await Promise.all([
-            dataService.getCalendars(),
-            dataService.getEvents()
-        ]);
-        setCalendars(cals);
-        setEvents(evts.filter(e => !e.deletedAt));
-        setDeletedEvents(evts.filter(e => !!e.deletedAt));
-        performSync(cals);
-    };
-    init();
+        if (settings.theme) setTheme(settings.theme);
+      };
+      checkTour();
+    }
+
+    if (loggedUser) {
+      const init = async () => {
+          const settings = await dataService.getSettings();
+          setTheme(settings.theme || 'system');
+          setTimeZoneConfig(settings.timezone_config || { primary: 'local', secondary: 'UTC', showSecondary: false });
+          if (!settings.has_seen_tour) setIsOnboardingOpen(true);
+          const [cals, evts] = await Promise.all([
+              dataService.getCalendars(),
+              dataService.getEvents()
+          ]);
+          setCalendars(cals);
+          setEvents(evts.filter(e => !e.deletedAt));
+          setDeletedEvents(evts.filter(e => !!e.deletedAt));
+          performSync(cals);
+      };
+      init();
+    }
   }, [currentUser?.id, performSync]);
 
   const handleSaveEvent = async (eventData: Partial<CalendarEvent>) => {
@@ -152,7 +171,14 @@ const App: React.FC = () => {
   }, [events, calendars, view, currentDate]);
 
   if (!currentUser) {
-    return showLanding ? <LandingPage onGetStarted={() => setShowLanding(false)} /> : <Login onLogin={(u) => { setCurrentUser(u); setShowLanding(false); }} onBack={() => setShowLanding(true)} />;
+    return showLanding ? (
+      <LandingPage onGetStarted={() => setShowLanding(false)} />
+    ) : (
+      <Login 
+        onLogin={(u) => { setCurrentUser(u); setShowLanding(false); }} 
+        onBack={() => setShowLanding(true)} 
+      />
+    );
   }
 
   return (
@@ -200,6 +226,7 @@ const App: React.FC = () => {
       </div>
 
       <button onClick={() => setIsModalOpen(true)} className="fixed bottom-6 right-6 z-50 w-16 h-16 bg-black dark:bg-white text-white dark:text-black rounded-2xl shadow-2xl flex items-center justify-center hover:scale-110 transition-all group border border-white/20 active:scale-90"><Plus size={32} strokeWidth={3} /></button>
+      <ChatBot onAddEvent={handleSaveEvent} calendars={calendars} events={events} currentUser={currentUser} onOpenPricing={() => setIsPricingOpen(true)} />
       <ChatBot onAddEvent={handleSaveEvent} calendars={calendars} events={events} currentUser={currentUser} onOpenPricing={() => setIsPricingOpen(true)} />
       <EventModal isOpen={isModalOpen || !!selectedEvent} onClose={() => {setIsModalOpen(false); setSelectedEvent(null)}} onSave={handleSaveEvent} calendars={calendars} existingEvent={selectedEvent} onDelete={(id) => dataService.deleteEvent(id).then(() => setEvents(p => p.filter(e => e.id !== id)))} />
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} events={events} onImportEvents={evs => evs.forEach(handleSaveEvent)} timeZoneConfig={timeZoneConfig} onTimeZoneChange={c => { setTimeZoneConfig(c); dataService.saveSettings({ timezone_config: c }); }} />

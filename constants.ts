@@ -17,7 +17,7 @@ export const REMINDER_OPTIONS = [
   { value: 10080, label: '1 semana antes' },
 ];
 
-// Configuración por Plan (Composición exacta solicitada por el usuario)
+// Configuración por Plan
 const ADMIN_DEFAULTS = [
   { label: 'Admin:', color: '#000000' },
   { label: 'Mama', color: '#E91E63' },
@@ -56,10 +56,10 @@ export const PLAN_CALENDARS = {
 
 export const PLAN_LIMITS = {
   free: 1,
-  basic: 2,
+  basic: 20,
   pro: 20,
-  casa: 20,
-  admin: 30,
+  casa: 999,
+  admin: 999,
   unlimited: 999
 };
 
@@ -75,7 +75,6 @@ export const MOCK_LOCATIONS = [
   "Starbucks", "Oficina Central", "Casa", "Zoom Meeting", "Google Meet"
 ];
 
-// Fallback legacy
 export const DEFAULT_CALENDARS: CalendarConfig[] = [
   { id: 'personal', label: 'Personal', color: '#039BE5', visible: true }
 ];

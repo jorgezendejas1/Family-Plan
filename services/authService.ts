@@ -76,9 +76,7 @@ export const authService = {
   logout: () => {
     // 1. Limpiamos la persistencia
     localStorage.removeItem('fp_current_user');
-    // 2. Forzamos recarga total para limpiar estado de React y memoria
-    // Esto garantiza que el flujo de redirección sea atómico.
-    window.location.reload();
+    // Se elimina el reload para permitir que App.tsx controle la navegación a la página de login
   },
 
   getAllUsers: async (): Promise<User[]> => {

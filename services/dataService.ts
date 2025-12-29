@@ -1,7 +1,7 @@
 
 import { supabase } from './supabaseClient';
-import { CalendarEvent, CalendarConfig, Theme, TimeZoneConfig, PlanType, FamilyChatMessage } from '../types';
-import { PLAN_CALENDARS, DEFAULT_CALENDARS } from '../constants';
+import { CalendarEvent, CalendarConfig, FamilyChatMessage } from '../types';
+import { DEFAULT_CALENDARS, PLAN_CALENDARS } from '../constants';
 import { isValid, parseISO } from 'date-fns';
 import { authService } from './authService';
 import { cryptoService } from '../utils/cryptoUtils';
@@ -10,53 +10,6 @@ const getActiveUserId = () => authService.getCurrentUser()?.id || null;
 const getEncryptionSecret = () => {
     const user = authService.getCurrentUser();
     return user ? user.email + "_fp_secure_v2" : "global_fallback_v2";
-};
-
-const safeDate = (input: any, fallback: Date = new Date()): Date => {
-  if (!input) return fallback;
-  if (input instanceof Date) return isValid(input) ? input : fallback;
-  if (typeof input === 'string') {
-    const parsed = parseISO(input);
-    return isValid(parsed) ? parsed : fallback;
-  }
-  return fallback;
-};
-
-const mapEventFromDB = async (dbEvent: any): Promise<CalendarEvent> => {
-  const secret = getEncryptionSecret();
-  return {
-    ...dbEvent,
-    title: await cryptoService.decrypt(dbEvent.title, secret),
-    description: dbEvent.description ? await cryptoService.decrypt(dbEvent.description, secret) : undefined,
-    location: dbEvent.location ? await cryptoService.decrypt(dbEvent.location, secret) : undefined,
-    start: safeDate(dbEvent.start_date),
-    end: safeDate(dbEvent.end_date),
-    calendarId: dbEvent.calendar_id,
-    reminderMinutes: Array.isArray(dbEvent.reminder_minutes) ? dbEvent.reminder_minutes : []
-  };
-};
-
-const mapEventToDB = async (event: CalendarEvent, userId: string) => {
-  const secret = getEncryptionSecret();
-  return {
-    id: event.id,
-    user_id: userId,
-    title: await cryptoService.encrypt(event.title || '(Sin título)', secret),
-    description: event.description ? await cryptoService.encrypt(event.description, secret) : null,
-    location: event.location ? await cryptoService.encrypt(event.location, secret) : null,
-    start_date: safeDate(event.start).toISOString(),
-    end_date: safeDate(event.end).toISOString(),
-    color: event.color,
-    calendar_id: event.calendarId,
-    recurrence: event.recurrence || 'none',
-    is_birthday: !!event.isBirthday,
-    is_task: !!event.isTask,
-    is_completed: !!event.isCompleted,
-    is_important: !!event.isImportant,
-    category: event.category || 'Otro',
-    reminder_minutes: event.reminderMinutes || [],
-    created_by_bot: !!event.createdByBot
-  };
 };
 
 export const dataService = {
@@ -93,13 +46,45 @@ export const dataService = {
     if (!userId || !supabase) return [];
     const { data } = await supabase.from('events').select('*').eq('user_id', userId).is('deleted_at', null);
     if (!data) return [];
-    return await Promise.all(data.map(mapEventFromDB));
+    
+    const secret = getEncryptionSecret();
+    return await Promise.all(data.map(async (dbEvent) => ({
+        ...dbEvent,
+        title: await cryptoService.decrypt(dbEvent.title, secret),
+        description: dbEvent.description ? await cryptoService.decrypt(dbEvent.description, secret) : undefined,
+        location: dbEvent.location ? await cryptoService.decrypt(dbEvent.location, secret) : undefined,
+        start: parseISO(dbEvent.start_date),
+        end: parseISO(dbEvent.end_date),
+        calendarId: dbEvent.calendar_id,
+        reminderMinutes: Array.isArray(dbEvent.reminder_minutes) ? dbEvent.reminder_minutes : []
+    })));
   },
 
   createOrUpdateEvent: async (event: CalendarEvent): Promise<CalendarEvent> => {
     const userId = getActiveUserId();
     if (!userId || !supabase) return event;
-    const dbReadyEvent = await mapEventToDB(event, userId);
+    const secret = getEncryptionSecret();
+    
+    const dbReadyEvent = {
+        id: event.id,
+        user_id: userId,
+        title: await cryptoService.encrypt(event.title || '(Sin título)', secret),
+        description: event.description ? await cryptoService.encrypt(event.description, secret) : null,
+        location: event.location ? await cryptoService.encrypt(event.location, secret) : null,
+        start_date: event.start.toISOString(),
+        end_date: event.end.toISOString(),
+        color: event.color,
+        calendar_id: event.calendarId,
+        recurrence: event.recurrence || 'none',
+        is_birthday: !!event.isBirthday,
+        is_task: !!event.isTask,
+        is_completed: !!event.isCompleted,
+        is_important: !!event.isImportant,
+        category: event.category || 'Otro',
+        reminder_minutes: event.reminderMinutes || [],
+        created_by_bot: !!event.createdByBot
+    };
+
     await supabase.from('events').upsert(dbReadyEvent);
     return event;
   },
@@ -123,84 +108,68 @@ export const dataService = {
     await supabase.from('settings').upsert({ ...settings, user_id: userId });
   },
 
-  // --- FAMILY CHAT (MODO SaaS) ---
+  // --- ENGINE DE CHAT FAMILIAR (FIFO 200) ---
   getFamilyMessages: async (): Promise<FamilyChatMessage[]> => {
     const userId = getActiveUserId();
     if (!userId || !supabase) return [];
+    
     const { data } = await supabase
       .from('family_messages')
       .select('*')
       .eq('family_id', userId)
-      .order('created_at', { ascending: true })
-      .limit(200);
+      .order('timestamp', { ascending: true });
+    
     return data || [];
   },
 
-  sendFamilyMessage: async (msg: Partial<FamilyChatMessage>) => {
-    const userId = getActiveUserId();
-    if (!userId || !supabase) return;
-    
-    // Mantenimiento FIFO de 200 mensajes
+  sendFamilyMessage: async (msgData: { text: string, mentions: string[] }) => {
+    const user = authService.getCurrentUser();
+    if (!user || !supabase) return null;
+
+    // Verificar límite FIFO 200 antes de insertar
     const { count } = await supabase
       .from('family_messages')
       .select('*', { count: 'exact', head: true })
-      .eq('family_id', userId);
+      .eq('family_id', user.id);
 
     if (count && count >= 200) {
+      // Borrar el más antiguo
       const { data: oldest } = await supabase
         .from('family_messages')
         .select('id')
-        .eq('family_id', userId)
-        .order('created_at', { ascending: true })
+        .eq('family_id', user.id)
+        .order('timestamp', { ascending: true })
         .limit(1)
         .single();
-      if (oldest) await supabase.from('family_messages').delete().eq('id', oldest.id);
+      
+      if (oldest) {
+        await supabase.from('family_messages').delete().eq('id', oldest.id);
+      }
     }
 
-    const newMsg = {
+    const newMessage = {
       id: crypto.randomUUID(),
-      family_id: userId,
-      sender_label: msg.sender_label,
-      content: msg.content,
-      mentions: msg.mentions || [],
-      created_at: new Date().toISOString()
+      family_id: user.id,
+      user_id: user.id,
+      user_name: user.name,
+      timestamp: new Date().toISOString(),
+      text: msgData.text,
+      mentions: msgData.mentions
     };
 
-    await supabase.from('family_messages').insert(newMsg);
-    return newMsg;
+    const { data, error } = await supabase.from('family_messages').insert(newMessage).select().single();
+    if (error) throw error;
+    return data;
   },
 
-  getChatHistory: async () => {
-     const userId = getActiveUserId();
-     const history = localStorage.getItem(`fp_chat_ai_${userId}`);
-     return history ? JSON.parse(history) : [];
-  },
-
-  saveChatMessage: async (message: any) => {
-     const userId = getActiveUserId();
-     const history = await dataService.getChatHistory();
-     history.push(message);
-     localStorage.setItem(`fp_chat_ai_${userId}`, JSON.stringify(history));
-  },
-
-  // --- RESET TO DEFAULTS ---
-  // Fix for Error in file components/Sidebar.tsx on line 88: Property 'resetCalendarsToDefault' does not exist on type dataService
   resetCalendarsToDefault: async () => {
     const userId = getActiveUserId();
     if (!userId || !supabase) return;
-    
-    // 1. Delete all events for this user
     await supabase.from('events').delete().eq('user_id', userId);
-    
-    // 2. Delete all calendars for this user
     await supabase.from('calendars').delete().eq('user_id', userId);
-    
-    // 3. Get defaults based on plan
     const user = authService.getCurrentUser();
     const plan = user?.plan || 'free';
     const defaultCals = PLAN_CALENDARS[plan as keyof typeof PLAN_CALENDARS] || PLAN_CALENDARS.free;
-    
-    // 4. Create new default calendars
     const newCals = defaultCals.map(c => ({
       id: crypto.randomUUID(),
       user_id: userId,
@@ -208,7 +177,6 @@ export const dataService = {
       color: c.color,
       visible: true
     }));
-    
     await supabase.from('calendars').insert(newCals);
   }
 };

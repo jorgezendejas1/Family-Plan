@@ -1,92 +1,83 @@
-# Family Plan (React + Gemini AI)
 
-Una aplicación de calendario moderna y responsiva construida con **React**, **Tailwind CSS** y potenciada por **Google Gemini AI**. Esta aplicación ofrece gestión de eventos local, persistencia de datos, múltiples vistas y un asistente inteligente capaz de crear eventos mediante texto, voz e imágenes.
+# 📱 Family Plan | Premium Family Command Center
 
-## 🚀 Características Principales
+**Family Plan** es la solución definitiva de organización para el hogar moderno. No es solo un calendario; es un ecosistema de productividad familiar que fusiona **Privacidad de Grado Militar (E2EE)**, **Inteligencia Artificial de Precisión** y un sistema de **Sincronización Multi-Cuenta** único en el mercado.
 
-*   **Vistas Múltiples:** Agenda, Día, Semana, Mes.
-*   **Asistente IA (Gemini 3 Pro):**
-    *   Creación de eventos mediante lenguaje natural ("Cena mañana a las 8").
-    *   Reconocimiento de voz para dictado.
-    *   Análisis de imágenes (volantes, capturas) para extraer eventos.
-*   **Gestión Completa:** Eventos recurrentes, tareas, cumpleaños y notificaciones push.
-*   **Diseño Responsivo:** Interfaz Mobile-First optimizada con Sidebar colapsable.
-*   **Persistencia:** Todos los datos se guardan en el `localStorage` del navegador o Supabase (si está configurado).
-*   **Papelera de Reciclaje:** Recuperación de eventos borrados accidentalmente.
-*   **Importar/Exportar:** Soporte completo para archivos `.ics`.
+---
 
-## 🛠️ Tecnologías
+## 💎 Innovaciones Radicales
 
-*   **Frontend:** React 19, TypeScript, Vite.
-*   **Estilos:** Tailwind CSS.
-*   **Lógica de Fechas:** date-fns.
-*   **Iconos:** Lucide React.
-*   **Inteligencia Artificial:** Google GenAI SDK (`@google/genai`).
+### 1. 💬 Chat Familiar FIFO 200 (Exclusivo)
+Hemos reinventado la comunicación familiar para eliminar el ruido y fomentar la acción.
+- **Lógica FIFO (First-In, First-Out):** El sistema mantiene estrictamente los últimos 200 mensajes en la base de datos de Supabase. Cuando llega el mensaje 201, el más antiguo se elimina permanentemente. Esto garantiza que el chat sea para coordinar el "ahora" y que la información importante se traslade al calendario.
+- **Menciones Inteligentes (@):** Sistema de resaltado visual dinámico. Al mencionar a un miembro (ej. `@Mama`), el mensaje se etiqueta con su color de identidad familiar, facilitando la lectura rápida.
+- **UI Optimista:** Los mensajes se renderizan instantáneamente en la interfaz antes de confirmarse en el servidor, eliminando cualquier sensación de lag.
 
-## 📋 Requisitos Previos
+### 2. 🌐 Multi-Sincronización Google Calendar
+A diferencia de otras apps que solo permiten una cuenta, Family Plan permite una red de sincronización.
+- **Sincronización por Miembro:** Cada "Miembro de la Familia" (Mama, Papa, Hijo, etc.) puede vincular su propia cuenta personal de Google de forma independiente.
+- **Bidireccional Real:** Los eventos creados en Google aparecen en la vista familiar, y los eventos creados en Family Plan se inyectan automáticamente en el Google Calendar del miembro asignado.
+- **Identificación Visual:** Los eventos remotos se marcan con el icono 🌐, manteniendo la claridad sobre el origen del dato.
 
-*   **Node.js:** Versión 18.0.0 o superior.
-*   **Google AI Studio API Key:** Necesaria para las funciones de Chatbot e IA.
+### 3. 🛡️ Privacidad Radical (E2EE AES-256)
+Privacidad absoluta mediante la **Web Crypto API**.
+- **Cifrado en Cliente:** El `title`, `description` y `location` de cada evento se cifran con una llave derivada de la contraseña del usuario antes de salir del navegador.
+- **Cero Conocimiento:** Ni el administrador de la base de datos ni los desarrolladores pueden leer tus planes. Solo los miembros autorizados de la cuenta familiar poseen la clave de descifrado.
 
-## 🔧 Instalación y Configuración
+### 4. 🤖 IA de Precisión (Gemini 3 Pro)
+Un motor de agendamiento optimizado para la eficiencia.
+- **Filtro de Intención:** La IA ha sido instruida para ignorar charlas triviales y centrarse exclusivamente en la extracción de eventos.
+- **Borradores Interactivos:** En lugar de crear el evento directamente, la IA presenta una tarjeta de confirmación ("Borrador") para que el usuario valide los datos antes de agendar.
+- **Comprensión Temporal:** Entiende lenguaje natural complejo como "Cena con los abuelos el tercer viernes de cada mes a las 8pm".
 
-### 1. Clonar el repositorio
+---
 
-```bash
-git clone https://github.com/tu-usuario/family-plan.git
-cd family-plan
-```
+## 🚀 Funcionalidades Pro
 
-### 2. Instalar dependencias
+- **Vistas Multimodales:** Mes (con previsualización por hover), Semana (con regla de tiempo), Día y Agenda cronológica de búsqueda rápida.
+- **Gestión de Tareas:** Panel lateral independiente con sistema de importancia (Star), filtrado de completadas y selector de calendario de origen.
+- **Gestión de Miembros:** Personalización total de nombres y paletas de colores premium (HEX personalizado).
+- **Papelera Familiar:** Historial de borrados que permite recuperar eventos eliminados accidentalmente por cualquier miembro.
+- **Exportación ICS:** Generación de archivos de calendario universal compatibles con Apple, Outlook y dispositivos Android.
 
-```bash
-npm install
-```
+---
 
-### 3. Configurar Variables de Entorno
+## 💰 Modelo de Negocio (SaaS)
 
-Este proyecto requiere una API Key de Google Gemini para funcionar correctamente.
+| Característica | Plan Gratis | Plan Basic | Plan PRO |
+| :--- | :--- | :--- | :--- |
+| **Tokens IA** | 10 / semana | 50 / semana | 125 / semana |
+| **Miembros** | 1 | Hasta 20 | Ilimitados |
+| **Cuentas Google** | 1 | Ilimitadas | Ilimitadas |
+| **Publicidad** | Activa | Sin anuncios | Sin anuncios |
+| **Soporte** | Comunitario | Prioritario | 24/7 VIP |
 
-1.  Crea un archivo `.env` en la raíz del proyecto (basado en el ejemplo, si existe).
-2.  Obtén tu clave en [Google AI Studio](https://aistudio.google.com/).
-3.  Agrega la siguiente línea al archivo `.env`:
+---
 
-```env
-# En Vite, usualmente se usa VITE_API_KEY, pero este proyecto 
-# está configurado para reemplazar process.env.API_KEY durante el build.
-API_KEY=tu_clave_api_aqui
-```
+## 🏗️ Stack Tecnológico de Vanguardia
 
-> **Nota:** El código espera acceder a la clave mediante `process.env.API_KEY`. Asegúrate de que tu configuración de Vite (`vite.config.ts`) tenga el plugin `define` configurado para exponer esta variable, o usa `VITE_API_KEY` y actualiza las llamadas en `ChatBot.tsx` y `App.tsx`.
+- **Frontend:** React 19 + TypeScript (Hooks avanzados y Context API).
+- **Estilos:** Tailwind CSS con animaciones personalizadas de *Spring Physics*.
+- **Backend/DB:** Supabase (PostgreSQL) con suscripciones en tiempo real para el Chat.
+- **Inteligencia Artificial:** SDK `@google/genai` utilizando el modelo `gemini-3-pro-preview`.
+- **Seguridad:** AES-GCM 256-bit mediante Web Crypto API nativa.
+- **Cloud:** Preparado para despliegue escalable en Cloud Run / Vercel.
 
-### 4. Ejecutar en Desarrollo
+---
 
-Inicia el servidor local:
+## 🛠️ Configuración de Desarrollo
 
-```bash
-npm run dev
-```
+1.  **Clonar repositorio:** `git clone https://github.com/tu-usuario/family-plan.git`
+2.  **Instalar dependencias:** `npm install`
+3.  **Configurar variables `.env`:**
+    ```env
+    API_KEY=tu_gemini_api_key
+    VITE_SUPABASE_URL=tu_url_supabase
+    VITE_SUPABASE_ANON_KEY=tu_anon_key_supabase
+    VITE_GOOGLE_CLIENT_ID=tu_google_oauth_id
+    ```
+4.  **Iniciar entorno:** `npm run dev`
 
-La aplicación estará disponible típicamente en `http://localhost:5173`.
+---
 
-## 📦 Scripts Disponibles
-
-*   `npm run dev`: Inicia el servidor de desarrollo con recarga en caliente (HMR).
-*   `npm run build`: Compila el código TypeScript y genera los archivos estáticos optimizados para producción en la carpeta `dist`.
-*   `npm run preview`: Sirve localmente la versión de producción construida para probar el rendimiento.
-*   `npm run lint`: Ejecuta ESLint para encontrar problemas en el código.
-
-## 📱 Guía de Uso Rápido
-
-1.  **Crear Eventos:** Usa el botón "+" flotante (móvil) o el botón "Crear" en la barra lateral.
-2.  **Usar la IA:** Haz clic en el botón ✨ (esquina inferior izquierda) para abrir el chat. Prueba subir una foto de una invitación o di: *"Programa una reunión de equipo el viernes a las 10am"*.
-3.  **Vistas:** Cambia entre Mes/Semana/Día/Agenda usando el selector superior.
-4.  **Datos:** Tus eventos persisten al recargar. Puedes exportar una copia de seguridad en `.ics` desde **Configuración > Importar/Exportar**.
-
-## 🤝 Contribución
-
-Las contribuciones son bienvenidas. Por favor, abre un issue primero para discutir qué te gustaría cambiar.
-
-## 📄 Licencia
-
-Este proyecto está bajo la Licencia MIT.
+**Family Plan** - *Tu familia en perfecta sintonía.*
