@@ -20,6 +20,7 @@ import InstructionsModal from './components/InstructionsModal';
 import Login from './components/Login';
 import LandingPage from './components/LandingPage';
 import PricingModal from './components/PricingModal';
+import AppSkeleton from './components/AppSkeleton';
 import { CalendarEvent, ViewType, CalendarConfig, SearchCriteria, Theme, TimeZoneConfig, User } from './types';
 import { dataService } from './services/dataService';
 import { googleCalendarService } from './services/googleCalendarService';
@@ -30,6 +31,7 @@ import { es } from 'date-fns/locale';
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [showLanding, setShowLanding] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<ViewType>('month');
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -37,62 +39,51 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isTaskPanelOpen, setIsTaskPanelOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isPricingOpen, setIsPricingOpen] = useState(false);
   const [isInstructionsOpen, setIsInstructionsOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [theme, setTheme] = useState<Theme>('system');
   const [searchCriteria, setSearchCriteria] = useState<SearchCriteria>({ query: '' });
-  const [timeZoneConfig, setTimeZoneConfig] = useState<TimeZoneConfig>({ primary: 'local', secondary: 'UTC', showSecondary: false });
 
-  const performSync = useCallback(async (currentCals: CalendarConfig[]) => {
-    if (currentCals.length === 0) return;
-    setIsSyncing(true);
-    try {
-      const remoteEvents = await googleCalendarService.fetchAllMappedEvents(currentCals);
-      setEvents(prev => [...prev.filter(e => !e.isRemote), ...remoteEvents]);
-    } catch (e) { 
-      console.error("Sync Error:", e); 
-    } finally { 
-      setIsSyncing(false); 
-    }
-  }, []);
-
-  const handleLogout = () => {
-    authService.logout();
-    setCurrentUser(null);
-    setShowLanding(false);
-    setIsSidebarOpen(false);
-    setIsTaskPanelOpen(false);
+  const handleLogout = () => { 
+    authService.logout(); 
+    setCurrentUser(null); 
+    setShowLanding(false); 
+    setIsLoading(false);
   };
 
   useEffect(() => {
     const loggedUser = authService.getCurrentUser();
-    if (loggedUser) {
-      setCurrentUser(loggedUser);
-      setShowLanding(false);
+    if (loggedUser) { 
+      setCurrentUser(loggedUser); 
+      setShowLanding(false); 
+    } else {
+      setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
     if (currentUser) {
       const init = async () => {
-          const settings = await dataService.getSettings();
-          setTheme(settings.theme || 'system');
-          if (!settings.has_seen_tour) setIsOnboardingOpen(true);
-          const [cals, evts] = await Promise.all([
-              dataService.getCalendars(),
-              dataService.getEvents()
-          ]);
-          setCalendars(cals);
-          setEvents(evts.filter(e => !e.deletedAt));
-          performSync(cals);
+          setIsLoading(true);
+          try {
+            const settings = await dataService.getSettings();
+            setTheme(settings.theme || 'system');
+            if (!settings.has_seen_tour) setIsOnboardingOpen(true);
+            const [cals, evts] = await Promise.all([ dataService.getCalendars(), dataService.getEvents() ]);
+            setCalendars(cals);
+            setEvents(evts.filter(e => !e.deletedAt));
+          } catch (e) {
+            console.error("Initial load error:", e);
+          } finally {
+            // Un pequeño delay artificial para asegurar que la transición visual sea fluida
+            setTimeout(() => setIsLoading(false), 800);
+          }
       };
       init();
     }
-  }, [currentUser, performSync]);
+  }, [currentUser]);
 
   const handleSaveEvent = async (eventData: Partial<CalendarEvent>) => {
     const newEvent: CalendarEvent = {
@@ -109,7 +100,6 @@ const App: React.FC = () => {
         location: eventData.location,
         category: eventData.category
     };
-
     setEvents(prev => [...prev.filter(e => e.id !== newEvent.id), newEvent]);
     await dataService.createOrUpdateEvent(newEvent);
   };
@@ -124,7 +114,10 @@ const App: React.FC = () => {
     return generateRecurringEvents(filtered, start, end);
   }, [events, calendars, view, currentDate]);
 
-  const tasks = useMemo(() => events.filter(e => e.isTask), [events]);
+  // Si estamos cargando y no estamos en el landing, mostramos el Skeleton
+  if (isLoading && !showLanding) {
+    return <AppSkeleton />;
+  }
 
   if (!currentUser) {
     return showLanding ? <LandingPage onGetStarted={() => setShowLanding(false)} /> : <Login onLogin={setCurrentUser} onBack={() => setShowLanding(true)} />;
@@ -132,28 +125,10 @@ const App: React.FC = () => {
 
   return (
     <div className={`flex flex-col h-screen bg-gray-50 dark:bg-black font-sans ${theme === 'dark' ? 'dark' : ''} overflow-hidden`}>
-      <Header 
-        currentDate={currentDate} view={view} events={events}
-        onViewChange={setView} onDateSelect={setCurrentDate} onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)}
-        isSidebarOpen={isSidebarOpen} onPrev={() => setCurrentDate(view === 'month' ? subMonths(currentDate, 1) : subWeeks(currentDate, 1))}
-        onNext={() => setCurrentDate(view === 'month' ? addMonths(currentDate, 1) : addWeeks(currentDate, 1))}
-        onToday={() => setCurrentDate(new Date())} searchCriteria={searchCriteria} onSearchChange={setSearchCriteria}
-        onToggleFilters={() => {}} theme={theme} onThemeChange={setTheme}
-        onStartTour={() => setIsOnboardingOpen(true)} onShowInstructions={() => setIsInstructionsOpen(true)}
-        onToggleTaskPanel={() => setIsTaskPanelOpen(!isTaskPanelOpen)} isTaskPanelOpen={isTaskPanelOpen}
-        onCreateClick={() => setIsModalOpen(true)} currentUser={currentUser} onLogout={handleLogout}
-      />
-
+      <Header currentDate={currentDate} view={view} events={events} onViewChange={setView} onDateSelect={setCurrentDate} onMenuClick={() => setIsSidebarOpen(!isSidebarOpen)} isSidebarOpen={isSidebarOpen} onPrev={() => setCurrentDate(view === 'month' ? subMonths(currentDate, 1) : subWeeks(currentDate, 1))} onNext={() => setCurrentDate(view === 'month' ? addMonths(currentDate, 1) : addWeeks(currentDate, 1))} onToday={() => setCurrentDate(new Date())} searchCriteria={searchCriteria} onSearchChange={setSearchCriteria} onToggleFilters={() => {}} theme={theme} onThemeChange={setTheme} onStartTour={() => setIsOnboardingOpen(true)} onShowInstructions={() => setIsInstructionsOpen(true)} onToggleTaskPanel={() => setIsTaskPanelOpen(!isTaskPanelOpen)} isTaskPanelOpen={isTaskPanelOpen} onCreateClick={() => setIsModalOpen(true)} currentUser={currentUser} onLogout={handleLogout} />
       <div className="flex flex-1 relative overflow-hidden px-4 md:px-6 pb-6 gap-6">
-        <Sidebar 
-          isOpen={isSidebarOpen} currentDate={currentDate} onDateSelect={setCurrentDate}
-          onCreateClick={() => setIsModalOpen(true)} currentView={view} onViewChange={setView}
-          calendars={calendars} onToggleCalendar={(id) => setCalendars(prev => prev.map(c => c.id === id ? {...c, visible: !c.visible} : c))}
-          onCalendarsChange={setCalendars} theme={theme} onThemeChange={setTheme} onClose={() => setIsSidebarOpen(false)}
-          currentUser={currentUser} onLogout={handleLogout} onOpenPricing={() => setIsPricingOpen(true)}
-        />
-
-        <main className={`flex-1 bg-white dark:bg-zinc-950 rounded-[32px] border border-gray-200 dark:border-zinc-800 shadow-premium relative flex flex-col transition-all duration-500 overflow-hidden ${isTaskPanelOpen ? 'lg:mr-80' : ''}`}>
+        <Sidebar isOpen={isSidebarOpen} currentDate={currentDate} onDateSelect={setCurrentDate} onCreateClick={() => setIsModalOpen(true)} currentView={view} onViewChange={setView} calendars={calendars} onToggleCalendar={(id) => setCalendars(prev => prev.map(c => c.id === id ? {...c, visible: !c.visible} : c))} onCalendarsChange={setCalendars} theme={theme} onThemeChange={setTheme} onClose={() => setIsSidebarOpen(false)} currentUser={currentUser} onLogout={handleLogout} onOpenPricing={() => setIsPricingOpen(true)} />
+        <main className={`flex-1 bg-white dark:bg-zinc-950 rounded-[32px] border border-gray-200 dark:border-zinc-800 shadow-premium relative flex flex-col transition-all duration-500 overflow-hidden`}>
             <div className="flex-1 overflow-y-auto custom-scrollbar">
                 {view === 'month' && <MonthView currentDate={currentDate} events={displayedEvents} calendars={calendars} onEventClick={setSelectedEvent} onTimeSlotClick={setCurrentDate} />}
                 {view === 'week' && <WeekView currentDate={currentDate} events={displayedEvents} calendars={calendars} onEventClick={setSelectedEvent} />}
@@ -161,29 +136,15 @@ const App: React.FC = () => {
                 {view === 'agenda' && <AgendaView currentDate={currentDate} events={displayedEvents} calendars={calendars} onEventClick={setSelectedEvent} />}
             </div>
         </main>
-
-        <aside className={`fixed top-[88px] bottom-6 right-6 z-[80] w-[calc(100%-48px)] md:w-80 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-3xl border border-gray-200 dark:border-zinc-800 rounded-[32px] shadow-2xl transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${isTaskPanelOpen ? 'translate-x-0' : 'translate-x-[120%] pointer-events-none'}`}>
-           <TaskPanel 
-              isOpen={isTaskPanelOpen} onClose={() => setIsTaskPanelOpen(false)}
-              tasks={tasks} calendars={calendars} onToggleTask={t => handleSaveEvent({...t, isCompleted: !t.isCompleted})}
-              onDeleteTask={id => dataService.deleteEvent(id).then(() => setEvents(p => p.filter(e => e.id !== id)))}
-              onAddTask={(title, calId) => handleSaveEvent({ title, isTask: true, calendarId: calId })}
-              onEditTask={setSelectedEvent}
-           />
+        <aside className={`fixed top-[88px] bottom-6 right-6 z-[80] w-[calc(100%-48px)] md:w-80 bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-[32px] shadow-2xl transition-all duration-500 ${isTaskPanelOpen ? 'translate-x-0' : 'translate-x-[120%] pointer-events-none'}`}>
+           <TaskPanel isOpen={isTaskPanelOpen} onClose={() => setIsTaskPanelOpen(false)} tasks={events.filter(e => e.isTask)} calendars={calendars} onToggleTask={t => handleSaveEvent({...t, isCompleted: !t.isCompleted})} onDeleteTask={id => dataService.deleteEvent(id).then(() => setEvents(p => p.filter(e => e.id !== id)))} onAddTask={(title, calId) => handleSaveEvent({ title, isTask: true, calendarId: calId })} onEditTask={setSelectedEvent} />
         </aside>
       </div>
-
       <ChatBot onAddEvent={handleSaveEvent} calendars={calendars} currentUser={currentUser} onOpenPricing={() => setIsPricingOpen(true)} />
-      
-      {/* Botón Flotante "+" (FAB) integrado debajo del ChatBot */}
-      <button 
-        onClick={() => setIsModalOpen(true)} 
-        className="fixed bottom-6 right-6 z-[160] w-16 h-16 bg-white dark:bg-zinc-900 text-gray-800 dark:text-white rounded-3xl shadow-premium border border-gray-200 dark:border-zinc-800 flex items-center justify-center hover:scale-110 active:scale-95 transition-all group overflow-hidden"
-      >
+      <button onClick={() => setIsModalOpen(true)} className="fixed bottom-6 right-6 z-[160] w-16 h-16 bg-white dark:bg-zinc-900 text-gray-800 dark:text-white rounded-3xl shadow-premium border border-gray-200 dark:border-zinc-800 flex items-center justify-center hover:scale-110 active:scale-95 transition-all group overflow-hidden">
         <Plus size={32} className="text-blue-600 dark:text-blue-400" strokeWidth={3} />
         <div className="absolute inset-0 bg-gradient-to-tr from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
       </button>
-
       <EventModal isOpen={isModalOpen || !!selectedEvent} onClose={() => {setIsModalOpen(false); setSelectedEvent(null)}} onSave={handleSaveEvent} calendars={calendars} existingEvent={selectedEvent} />
       <PricingModal isOpen={isPricingOpen} onClose={() => setIsPricingOpen(false)} />
     </div>

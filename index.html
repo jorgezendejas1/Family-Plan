@@ -42,14 +42,16 @@
               'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
               'slide-in-right': 'slideInRight 0.5s cubic-bezier(0.32, 0.72, 0, 1) forwards',
               'slide-up': 'slideUp 0.4s cubic-bezier(0.32, 0.72, 0, 1) forwards',
-              'fade-in': 'fadeIn 0.3s ease-out forwards'
+              'fade-in': 'fadeIn 0.3s ease-out forwards',
+              'shimmer': 'shimmer 2s linear infinite'
             },
             keyframes: {
               popOver: { '0%': { opacity: '0', transform: 'scale(0.8)' }, '100%': { opacity: '1', transform: 'scale(1)' } },
               springPress: { '0%': { transform: 'scale(0.9)' }, '40%': { transform: 'scale(1.05)' }, '100%': { transform: 'scale(1)' } },
               slideInRight: { '0%': { transform: 'translateX(100%)', opacity: '0' }, '100%': { transform: 'translateX(0)', opacity: '1' } },
               slideUp: { '0%': { transform: 'translateY(100%)' }, '100%': { transform: 'translateY(0)' } },
-              fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } }
+              fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
+              shimmer: { '0%': { backgroundPosition: '-1000px 0' }, '100%': { backgroundPosition: '1000px 0' } }
             },
             boxShadow: {
               'premium': '0 20px 40px -10px rgba(0,0,0,0.1)',
@@ -79,6 +81,15 @@
       .task-panel-exit {
         transform: translateX(100%);
         transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
+      }
+
+      .skeleton-bg {
+        background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+        background-size: 1000px 100%;
+      }
+      .dark .skeleton-bg {
+        background: linear-gradient(90deg, #1c1c1c 25%, #2a2a2a 50%, #1c1c1c 75%);
+        background-size: 1000px 100%;
       }
     </style>
     <script type="importmap">
