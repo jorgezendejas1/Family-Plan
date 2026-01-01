@@ -28,7 +28,7 @@ if (!SUPABASE_URL || !SUPABASE_KEY || !API_KEY) {
 }
 
 const supabase = createClient(SUPABASE_URL || '', SUPABASE_KEY || '');
-// Coding Guideline: new GoogleGenAI({apiKey: process.env.API_KEY})
+// Coding Guideline: new GoogleGenAI({ apiKey: process.env.API_KEY })
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 // --- API ROUTES ---
@@ -93,9 +93,9 @@ app.post('/api/process-event', async (req, res) => {
       .filter(m => (m.role === 'user' || m.role === 'model') && !m.eventDraft)
       .map(m => ({ role: m.role, parts: [{ text: m.text || '' }] }));
     
-    // Update model to gemini-3-pro-preview for complex reasoning tasks
+    // Se utiliza gemini-3-flash-preview para una respuesta ultra-rápida en tareas de texto básicas
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3-flash-preview',
       contents: [...geminiHistory, { role: 'user', parts: [{ text: message }] }],
       config: { systemInstruction, tools: [{ functionDeclarations: [createEventTool] }] }
     });

@@ -1,8 +1,8 @@
 
 import { supabase } from './supabaseClient';
 import { CalendarEvent, CalendarConfig, FamilyChatMessage } from '../types';
-import { DEFAULT_CALENDARS, PLAN_CALENDARS } from '../constants';
-import { isValid, parseISO } from 'date-fns';
+import { PLAN_DEFAULTS, PLAN_LIMITS } from '../constants';
+import { isValid, parseISO, startOfWeek } from 'date-fns';
 import { authService } from './authService';
 import { cryptoService } from '../utils/cryptoUtils';
 
@@ -13,11 +13,97 @@ const getEncryptionSecret = () => {
 };
 
 export const dataService = {
+  // ... (métodos existentes se mantienen)
+
+  // --- GESTIÓN DE CHAT FIFO 200 ---
+  getChatMessages: async (): Promise<FamilyChatMessage[]> => {
+    if (!supabase) return [];
+    
+    const { data } = await supabase
+      .from('family_chat')
+      .select('*')
+      .order('timestamp', { ascending: true })
+      .limit(200);
+    
+    return data || [];
+  },
+
+  sendChatMessage: async (message: FamilyChatMessage) => {
+    if (!supabase) return;
+
+    // 1. Insertar el nuevo mensaje
+    await supabase.from('family_chat').insert({
+      id: message.id,
+      family_id: message.family_id,
+      user_id: message.user_id,
+      user_name: message.user_name,
+      text: message.text,
+      timestamp: message.timestamp,
+      mentions: message.mentions
+    });
+
+    // 2. Ejecutar limpieza FIFO (Mantener solo los últimos 200)
+    // Nota: En una app real de producción, esto sería un Trigger de PostgreSQL, 
+    // pero aquí lo hacemos vía código para asegurar compatibilidad.
+    const { data: countData } = await supabase.from('family_chat').select('id', { count: 'exact' });
+    if (countData && countData.length > 200) {
+        // Obtenemos el ID del mensaje 201 más nuevo para borrar todo lo anterior
+        const { data: oldestToKeep } = await supabase
+            .from('family_chat')
+            .select('timestamp')
+            .order('timestamp', { ascending: false })
+            .range(199, 199)
+            .single();
+        
+        if (oldestToKeep) {
+            await supabase
+                .from('family_chat')
+                .delete()
+                .lt('timestamp', oldestToKeep.timestamp);
+        }
+    }
+  },
+
+  // --- RESTO DE MÉTODOS ---
+  getSettings: async () => {
+    const user = authService.getCurrentUser();
+    if (!user || !supabase) return { theme: 'system', has_seen_tour: false };
+    
+    const { data, error } = await supabase
+      .from('user_settings')
+      .select('*')
+      .eq('user_id', user.id)
+      .single();
+    
+    if (error || !data) {
+        return { theme: 'system', has_seen_tour: false };
+    }
+    return {
+        theme: data.theme || 'system',
+        has_seen_tour: !!data.has_seen_tour
+    };
+  },
+
   getCalendars: async (): Promise<CalendarConfig[]> => {
     const user = authService.getCurrentUser();
-    if (!user || !supabase) return DEFAULT_CALENDARS;
+    if (!user || !supabase) return [];
+    
     const { data } = await supabase.from('calendars').select('*').eq('user_id', user.id);
-    return data && data.length > 0 ? data : DEFAULT_CALENDARS;
+    
+    if (!data || data.length === 0) {
+      const plan = user.plan || 'free';
+      const defaults = (plan === 'free') ? PLAN_DEFAULTS.free : PLAN_DEFAULTS.premium;
+      const newCals = defaults.map(c => ({
+        id: crypto.randomUUID(),
+        user_id: user.id,
+        label: c.label,
+        color: c.color,
+        visible: true
+      }));
+      await supabase.from('calendars').insert(newCals);
+      return newCals;
+    }
+    return data;
   },
 
   updateCalendar: async (id: string, updates: Partial<CalendarConfig>) => {
@@ -34,11 +120,44 @@ export const dataService = {
   },
 
   createCalendar: async (label: string, color: string): Promise<CalendarConfig | null> => {
-    const userId = getActiveUserId();
-    if (!userId || !supabase) return null;
-    const newCal = { id: crypto.randomUUID(), user_id: userId, label, color, visible: true };
+    const user = authService.getCurrentUser();
+    if (!user || !supabase) return null;
+
+    const { count } = await supabase.from('calendars').select('id', { count: 'exact' }).eq('user_id', user.id);
+    const limit = PLAN_LIMITS[user.plan as keyof typeof PLAN_LIMITS] || 5;
+    
+    if (count && count >= limit) {
+      throw new Error(`Límite de ${limit} miembros alcanzado.`);
+    }
+
+    const newCal = { id: crypto.randomUUID(), user_id: user.id, label, color, visible: true };
     const { data } = await supabase.from('calendars').insert(newCal).select().single();
     return data;
+  },
+
+  resetCalendarsToDefault: async () => {
+    const userId = getActiveUserId();
+    if (!userId || !supabase) return;
+    await supabase.from('events').delete().eq('user_id', userId);
+    await supabase.from('calendars').delete().eq('user_id', userId);
+  },
+
+  getWeeklyAiCount: async (): Promise<number> => {
+    const userId = getActiveUserId();
+    if (!userId) return 0;
+    const weekStart = startOfWeek(new Date()).toISOString();
+    const { count } = await supabase
+      .from('ai_events_log')
+      .select('id', { count: 'exact' })
+      .eq('user_id', userId)
+      .gte('created_at', weekStart);
+    return count || 0;
+  },
+
+  incrementAiCount: async () => {
+    const userId = getActiveUserId();
+    if (!userId) return;
+    await supabase.from('ai_events_log').insert({ user_id: userId });
   },
 
   getEvents: async (): Promise<CalendarEvent[]> => {
@@ -46,7 +165,6 @@ export const dataService = {
     if (!userId || !supabase) return [];
     const { data } = await supabase.from('events').select('*').eq('user_id', userId).is('deleted_at', null);
     if (!data) return [];
-    
     const secret = getEncryptionSecret();
     return await Promise.all(data.map(async (dbEvent) => ({
         ...dbEvent,
@@ -64,7 +182,6 @@ export const dataService = {
     const userId = getActiveUserId();
     if (!userId || !supabase) return event;
     const secret = getEncryptionSecret();
-    
     const dbReadyEvent = {
         id: event.id,
         user_id: userId,
@@ -84,7 +201,6 @@ export const dataService = {
         reminder_minutes: event.reminderMinutes || [],
         created_by_bot: !!event.createdByBot
     };
-
     await supabase.from('events').upsert(dbReadyEvent);
     return event;
   },
@@ -95,88 +211,9 @@ export const dataService = {
     await supabase.from('events').update({ deleted_at: new Date().toISOString() }).eq('id', id).eq('user_id', userId);
   },
 
-  getSettings: async () => {
-    const userId = getActiveUserId();
-    if (!userId || !supabase) return { theme: 'system', timezone_config: { primary: 'local', secondary: 'UTC', showSecondary: false }, has_seen_tour: false };
-    const { data } = await supabase.from('settings').select('*').eq('user_id', userId).single();
-    return data || { theme: 'system', timezone_config: { primary: 'local', secondary: 'UTC', showSecondary: false }, has_seen_tour: false };
-  },
-
   saveSettings: async (settings: any) => {
     const userId = getActiveUserId();
     if (!userId || !supabase) return;
-    await supabase.from('settings').upsert({ ...settings, user_id: userId });
-  },
-
-  // --- ENGINE DE CHAT FAMILIAR (FIFO 200) ---
-  getFamilyMessages: async (): Promise<FamilyChatMessage[]> => {
-    const userId = getActiveUserId();
-    if (!userId || !supabase) return [];
-    
-    const { data } = await supabase
-      .from('family_messages')
-      .select('*')
-      .eq('family_id', userId)
-      .order('timestamp', { ascending: true });
-    
-    return data || [];
-  },
-
-  sendFamilyMessage: async (msgData: { text: string, mentions: string[] }) => {
-    const user = authService.getCurrentUser();
-    if (!user || !supabase) return null;
-
-    // Verificar límite FIFO 200 antes de insertar
-    const { count } = await supabase
-      .from('family_messages')
-      .select('*', { count: 'exact', head: true })
-      .eq('family_id', user.id);
-
-    if (count && count >= 200) {
-      // Borrar el más antiguo
-      const { data: oldest } = await supabase
-        .from('family_messages')
-        .select('id')
-        .eq('family_id', user.id)
-        .order('timestamp', { ascending: true })
-        .limit(1)
-        .single();
-      
-      if (oldest) {
-        await supabase.from('family_messages').delete().eq('id', oldest.id);
-      }
-    }
-
-    const newMessage = {
-      id: crypto.randomUUID(),
-      family_id: user.id,
-      user_id: user.id,
-      user_name: user.name,
-      timestamp: new Date().toISOString(),
-      text: msgData.text,
-      mentions: msgData.mentions
-    };
-
-    const { data, error } = await supabase.from('family_messages').insert(newMessage).select().single();
-    if (error) throw error;
-    return data;
-  },
-
-  resetCalendarsToDefault: async () => {
-    const userId = getActiveUserId();
-    if (!userId || !supabase) return;
-    await supabase.from('events').delete().eq('user_id', userId);
-    await supabase.from('calendars').delete().eq('user_id', userId);
-    const user = authService.getCurrentUser();
-    const plan = user?.plan || 'free';
-    const defaultCals = PLAN_CALENDARS[plan as keyof typeof PLAN_CALENDARS] || PLAN_CALENDARS.free;
-    const newCals = defaultCals.map(c => ({
-      id: crypto.randomUUID(),
-      user_id: userId,
-      label: c.label,
-      color: c.color,
-      visible: true
-    }));
-    await supabase.from('calendars').insert(newCals);
+    await supabase.from('user_settings').upsert({ user_id: userId, ...settings });
   }
 };

@@ -244,7 +244,7 @@ const EventModal: React.FC<EventModalProps> = ({
   if (showDeleteConfirm) {
     const isRecurring = existingEvent?.recurrence && existingEvent.recurrence !== 'none';
     return (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-md p-4 transition-all">
+        <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/40 backdrop-blur-md p-4 transition-all">
             <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-xl rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in border border-white/20 dark:border-white/10">
                 {isRecurring ? (
                   <div className="flex flex-col">
@@ -281,8 +281,8 @@ const EventModal: React.FC<EventModalProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md p-4 transition-all">
-      <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur-2xl rounded-[28px] shadow-2xl w-full max-w-[500px] flex flex-col max-h-[90vh] md:max-h-[85vh] animate-scale-in border border-white/20 dark:border-gray-700 overflow-hidden relative">
+    <div className="fixed inset-0 z-[300] flex items-end md:items-center justify-center bg-black/40 backdrop-blur-md md:p-4 transition-all">
+      <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur-2xl rounded-t-[28px] md:rounded-[28px] shadow-2xl w-full max-w-[500px] flex flex-col h-[85vh] md:max-h-[85vh] animate-slide-up md:animate-scale-in border border-white/20 dark:border-gray-700 overflow-hidden relative">
         
         <div className="flex items-center justify-between px-5 py-4 shrink-0 bg-white/50 dark:bg-gray-900/50 backdrop-blur-md sticky top-0 z-20">
           <button onClick={onClose} className="text-ios-blue dark:text-blue-400 hover:text-gray-800 transition-colors text-sm font-bold">
@@ -301,7 +301,7 @@ const EventModal: React.FC<EventModalProps> = ({
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar px-6 pb-8 pt-2">
+        <div className="flex-1 overflow-y-auto custom-scrollbar px-6 pb-20 pt-2">
             
             <div className="mb-6">
                  {!existingEvent && (

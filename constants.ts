@@ -17,50 +17,44 @@ export const REMINDER_OPTIONS = [
   { value: 10080, label: '1 semana antes' },
 ];
 
-// Configuración por Plan
-const ADMIN_DEFAULTS = [
-  { label: 'Admin:', color: '#000000' },
-  { label: 'Mama', color: '#E91E63' },
-  { label: 'Papa', color: '#039BE5' },
-  { label: 'Hija', color: '#8E24AA' },
-  { label: 'Hijo', color: '#33B679' },
-  { label: 'Hijita', color: '#F6BF26' },
-  { label: 'Hijito', color: '#F4511E' },
-  { label: 'Familia', color: '#3F51B5' },
-  { label: 'Otros', color: '#616161' }
-];
-
-export const PLAN_CALENDARS = {
+// Estructura de calendarios predeterminados por plan
+export const PLAN_DEFAULTS = {
   free: [
-    { label: 'Personal', color: '#039BE5' }
+    { label: 'Personal', color: '#039BE5' },
+    { label: 'Trabajo', color: '#616161' },
+    { label: 'Familia', color: '#3F51B5' },
+    { label: 'Salud', color: '#33B679' },
+    { label: 'Ocio', color: '#F6BF26' }
   ],
-  basic: [
-    { label: 'Mama', color: '#E91E63' },
-    { label: 'Papa', color: '#039BE5' }
-  ],
-  pro: [
-    { label: 'Mama', color: '#E91E63' },
-    { label: 'Papa', color: '#039BE5' },
-    { label: 'Familia', color: '#3F51B5' }
-  ],
-  casa: [
+  premium: [
     { label: 'Mama', color: '#E91E63' },
     { label: 'Papa', color: '#039BE5' },
+    { label: 'Hija', color: '#8E24AA' },
     { label: 'Hijo', color: '#33B679' },
-    { label: 'Hija', color: '#F6BF26' },
-    { label: 'Familia', color: '#3F51B5' }
-  ],
-  admin: ADMIN_DEFAULTS,
-  unlimited: ADMIN_DEFAULTS
+    { label: 'Hijita', color: '#F6BF26' },
+    { label: 'Hijito', color: '#F4511E' },
+    { label: 'Familia', color: '#3F51B5' },
+    { label: 'Otros', color: '#616161' }
+  ]
 };
 
 export const PLAN_LIMITS = {
-  free: 1,
+  free: 5, // Límite de miembros/calendarios
   basic: 20,
   pro: 20,
   casa: 999,
   admin: 999,
   unlimited: 999
+};
+
+// Límites de IA semanales
+export const AI_WEEKLY_LIMITS = {
+  free: 10,
+  basic: 50,
+  pro: 125,
+  admin: 99999,
+  unlimited: 99999,
+  casa: 99999
 };
 
 export const TIME_ZONES = [
@@ -75,6 +69,9 @@ export const MOCK_LOCATIONS = [
   "Starbucks", "Oficina Central", "Casa", "Zoom Meeting", "Google Meet"
 ];
 
-export const DEFAULT_CALENDARS: CalendarConfig[] = [
-  { id: 'personal', label: 'Personal', color: '#039BE5', visible: true }
-];
+export const DEFAULT_CALENDARS: CalendarConfig[] = PLAN_DEFAULTS.free.map(c => ({
+  id: crypto.randomUUID(),
+  label: c.label,
+  color: c.color,
+  visible: true
+}));

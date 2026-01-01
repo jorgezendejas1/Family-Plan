@@ -41,12 +41,14 @@
               'spring-press': 'springPress 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
               'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
               'slide-in-right': 'slideInRight 0.5s cubic-bezier(0.32, 0.72, 0, 1) forwards',
+              'slide-up': 'slideUp 0.4s cubic-bezier(0.32, 0.72, 0, 1) forwards',
               'fade-in': 'fadeIn 0.3s ease-out forwards'
             },
             keyframes: {
               popOver: { '0%': { opacity: '0', transform: 'scale(0.8)' }, '100%': { opacity: '1', transform: 'scale(1)' } },
               springPress: { '0%': { transform: 'scale(0.9)' }, '40%': { transform: 'scale(1.05)' }, '100%': { transform: 'scale(1)' } },
               slideInRight: { '0%': { transform: 'translateX(100%)', opacity: '0' }, '100%': { transform: 'translateX(0)', opacity: '1' } },
+              slideUp: { '0%': { transform: 'translateY(100%)' }, '100%': { transform: 'translateY(0)' } },
               fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } }
             },
             boxShadow: {
@@ -61,7 +63,7 @@
       body {
         font-family: 'Plus Jakarta Sans', sans-serif;
         -webkit-font-smoothing: antialiased;
-        overflow-y: auto; /* Ajustado para permitir scroll */
+        overflow-y: auto;
         overscroll-behavior-y: auto;
         -webkit-tap-highlight-color: transparent;
         background-color: #F9FAFB;
